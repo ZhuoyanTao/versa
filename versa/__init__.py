@@ -62,7 +62,10 @@ from versa.utterance_metrics.audiobox_aesthetics_score import (
 )
 from versa.utterance_metrics.emotion import emo2vec_setup, emo_sim
 from versa.utterance_metrics.nomad import nomad, nomad_setup
-from versa.utterance_metrics.noresqa import noresqa_metric, noresqa_model_setup
+try:
+    from versa.utterance_metrics.noresqa import noresqa_metric, noresqa_model_setup
+except Exception as e:
+    import logging; logging.getLogger('versa').warning('NORESQA disabled: %s', e)
 from versa.utterance_metrics.owsm_lid import language_id, owsm_lid_model_setup
 from versa.utterance_metrics.pysepm import pysepm_metric
 from versa.utterance_metrics.qwen2_audio import (

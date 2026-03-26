@@ -6,6 +6,14 @@
 #
 # Usage: ./run_cpu.sh <pred_wavscp> <gt_wavscp> <output_file> <config_file> [io_type] [text_file]
 set -e  # Exit immediately if a command exits with non-zero status
+set -euo pipefail
+source /work/nvme/bbjs/ttao3/venvs/versa_cpu/bin/activate
+PY=/work/nvme/bbjs/ttao3/venvs/versa_cpu/bin/python
+
+echo "[DEBUG] which python: $(which python)"
+$PY -c "import sys; print('[DEBUG] sys.executable=', sys.executable)"
+$PY -c "import utmosv2; print('[DEBUG] utmosv2=', utmosv2.__file__)"
+
 
 # Check if minimum required arguments are provided
 if [ $# -lt 4 ]; then
@@ -86,7 +94,7 @@ if [ -n "$TEXT_FILE" ] && [ "$TEXT_FILE" != "" ]; then
 fi
 
 # Set up error handling and run the scoring script
-if ! python versa/bin/scorer.py "${CMD_ARGS[@]}"; then
+if ! $PY -u versa/bin/scorer.py "${CMD_ARGS[@]}"; then
     echo "Error: CPU scoring failed with exit code $?"
     exit 1
 fi

@@ -21,11 +21,17 @@ if [ $# -lt 4 ]; then
     exit 1
 fi
 
+export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export NUMEXPR_NUM_THREADS=4
+
 # Parse command line arguments
 PRED=$1
 GT=$2
 OUTPUT=$3
 CONFIG=$4
+
 
 # Set default IO type if not provided
 IO_TYPE=${5:-soundfile}

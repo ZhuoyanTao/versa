@@ -19,6 +19,34 @@
 # Example: ./launcher.sh data/pred.scp data/gt.scp results/experiment1 10 --text=data/transcripts.txt
 
 set -e  # Exit immediately if a command exits with non-zero status
+set -euo pipefail
+
+source /work/nvme/bbjs/ttao3/venvs/versa_cpu/bin/activate
+# python -c "import utmosv2; print('utmosv2 ok')"
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+# ---- Prevent torch.hub / HF cache races across parallel Slurm jobs ----
+# Use per-launch (or per-job) cache roots on NVMe.
+LAUNCH_ID="${SLURM_JOB_ID:-manual}_$(date +%s)"
+CACHE_ROOT_DEFAULT="/work/nvme/bbjs/ttao3/versa_cache_${LAUNCH_ID}"
+CACHE_ROOT="${CACHE_ROOT:-$CACHE_ROOT_DEFAULT}"
+
+mkdir -p "${CACHE_ROOT}"/{torch,hub,hf,nltk,tmp}
+export TORCH_HOME="${CACHE_ROOT}/torch"
+export XDG_CACHE_HOME="${CACHE_ROOT}/hub"
+export HF_HOME="${CACHE_ROOT}/hf"
+export TRANSFORMERS_CACHE="${CACHE_ROOT}/hf/transformers"   # ok even if deprecated
+export HF_DATASETS_CACHE="${CACHE_ROOT}/hf/datasets"
+export NLTK_DATA="/work/nvme/bbjs/ttao3/nltk_data"
+export TMPDIR="${CACHE_ROOT}/tmp"
+
+echo -e "${YELLOW}CACHE_ROOT=${CACHE_ROOT}${NC}"
+
+unset HF_HUB_OFFLINE  # Unset Hugging Face offline mode if set
 
 # Define color codes for output messages
 GREEN='\033[0;32m'
@@ -53,6 +81,19 @@ SCORE_DIR=$3
 SPLIT_SIZE=$4
 IO_TYPE=${IO_TYPE:-soundfile}
 echo ${IO_TYPE}
+
+RESV_OPT=""
+MAX_PARALLEL=""
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Optional env knobs (must be defined because we use 'set -u')
+GPU_TYPE=${GPU_TYPE:-nvidia_a100}
+GPU_OTHER_OPTS=${GPU_OTHER_OPTS:-""}
+CPU_OTHER_OPTS=${CPU_OTHER_OPTS:-""}
+
+# Optional: user can override partition/account/time via env; keep existing defaults below
+CPU_PARTITION=${CPU_PARTITION:-""}   # not required, but harmless
+GPU_PARTITION=${GPU_PARTITION:-""}   # not required, but harmless
+
 
 # Default to running both CPU and GPU jobs
 RUN_CPU=true
@@ -109,17 +150,22 @@ if ! [[ "${SPLIT_SIZE}" =~ ^[0-9]+$ ]]; then
 fi
 
 # Configure Slurm partitions (can be modified based on your cluster setup)
-GPU_PART=${GPU_PARTITION:-general}
-CPU_PART=${CPU_PARTITION:-general}
+# Partitions
+GPU_PART=${GPU_PARTITION:-gpuA100x4}
+CPU_PART=${CPU_PARTITION:-cpu}
 
-# Configure resource requirements
-GPU_TIME=${GPU_TIME:-2-0:00:00}      # 2 days
-CPU_TIME=${CPU_TIME:-2-0:00:00}      # 2 days
-CPUS_PER_TASK=${CPUS:-8}             # 8 CPUs per task
-MEM_PER_CPU=${MEM:-2000}             # 2000MB per CPU
-GPU_TYPE=${GPU_TYPE:-}               # GPU type
-CPU_OTHER_OPTS=${CPU_OTHER_OPTS:-}   # other options for cpu
-GPU_OTHER_OPTS=${GPU_OTHER_OPTS:-}   # other options for gpu
+# Accounts
+ACCOUNT_GPU=${ACCOUNT_GPU:-bbjs-delta-gpu}
+ACCOUNT_CPU=${ACCOUNT_CPU:-bbjs-delta-cpu}
+
+# Resources (match your conf)
+GPU_TIME=${GPU_TIME:-2-0:00:00}
+CPU_TIME=${CPU_TIME:-2-0:00:00}
+CPUS_PER_TASK_GPU=${CPUS_PER_TASK_GPU:-16}      # 1 GPU case
+MEM_GPU_TOTAL=${MEM_GPU_TOTAL:-32000M}          # total mem (NOT per-cpu)
+CPUS_PER_TASK_CPU=${CPUS_PER_TASK_CPU:-2}
+MEM_PER_CPU_CPU=${MEM_PER_CPU_CPU:-2000M}
+
 
 # Print configuration summary
 echo -e "${BLUE}=== Configuration Summary ===${NC}"
@@ -145,7 +191,13 @@ if $RUN_CPU; then
 else
     echo -e "CPU processing: Disabled"
 fi
-echo -e "Resources per job: ${CPUS_PER_TASK} CPUs, ${MEM_PER_CPU}MB per CPU"
+if $RUN_GPU; then
+  echo -e "GPU job resources: ${CPUS_PER_TASK_GPU} CPUs, ${MEM_GPU_TOTAL} total mem, 1 GPU"
+fi
+if $RUN_CPU; then
+  echo -e "CPU job resources: ${CPUS_PER_TASK_CPU} CPUs, ${MEM_PER_CPU_CPU} per CPU"
+fi
+
 echo ""
 
 # Create directory structure
@@ -233,13 +285,18 @@ for ((i=0; i<${#pred_list[@]}; i++)); do
             GPU_GRES="--gres=gpu:1"
         fi
 
+    
         gpu_job_id=$(sbatch \
+            --reservation=sup-22955 \
             --parsable \
+            --export=ALL \
+            --account "${ACCOUNT_GPU}" \
             -p "${GPU_PART}" \
             --time "${GPU_TIME}" \
-            --cpus-per-task "${CPUS_PER_TASK}" \
-            --mem-per-cpu "${MEM_PER_CPU}M" \
-            ${GPU_GRES} ${GPU_OTHER_OPTS} \
+            --cpus-per-task "${CPUS_PER_TASK_GPU}" \
+            --mem "${MEM_GPU_TOTAL}" \
+            ${GPU_GRES} \
+            ${GPU_OTHER_OPTS} \
             -J "gpu_${job_prefix}" \
             -o "${SCORE_DIR}/logs/gpu_${job_prefix}_%j.out" \
             -e "${SCORE_DIR}/logs/gpu_${job_prefix}_%j.err" \
@@ -247,9 +304,11 @@ for ((i=0; i<${#pred_list[@]}; i++)); do
                 "${sub_pred_wavscp}" \
                 "${sub_gt_wavscp}" \
                 "${SCORE_DIR}/result/$(basename "${sub_pred_wavscp}").result.gpu.txt" \
-                egs/universa_prepare/gpu_subset.yaml \
+                egs/universa_prepare/gpu_nisqa.yaml \
                 ${IO_TYPE} \
-                "${sub_text_file}")
+                "${sub_text_file}"
+            )
+
 
         echo "GPU:${gpu_job_id} CHUNK:$((i+1))/${#pred_list[@]} FILE:${job_prefix}" >> "${JOB_IDS_FILE}"
         echo -e "  Submitted GPU job: ${gpu_job_id}"
@@ -259,10 +318,12 @@ for ((i=0; i<${#pred_list[@]}; i++)); do
     if $RUN_CPU; then
         cpu_job_id=$(sbatch \
             --parsable \
+            --export=ALL \
+            --account "${ACCOUNT_CPU}" \
             -p "${CPU_PART}" \
             --time "${CPU_TIME}" \
-            --cpus-per-task "${CPUS_PER_TASK}" \
-            --mem-per-cpu "${MEM_PER_CPU}M" \
+            --cpus-per-task "${CPUS_PER_TASK_CPU}" \
+            --mem-per-cpu "${MEM_PER_CPU_CPU}" \
             ${CPU_OTHER_OPTS} \
             -J "cpu_${job_prefix}" \
             -o "${SCORE_DIR}/logs/cpu_${job_prefix}_%j.out" \
@@ -271,7 +332,7 @@ for ((i=0; i<${#pred_list[@]}; i++)); do
                 "${sub_pred_wavscp}" \
                 "${sub_gt_wavscp}" \
                 "${SCORE_DIR}/result/$(basename "${sub_pred_wavscp}").result.cpu.txt" \
-                egs/universa_prepare/cpu_subset.yaml \
+                egs/universa_prepare/cpu_dnsmos.yaml \
                 ${IO_TYPE} \
                 "${sub_text_file}")
 

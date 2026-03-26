@@ -28,6 +28,8 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Function to display usage
 show_usage() {
     echo -e "${BLUE}Usage: $0 <pred_wavscp> <gt_wavscp> <score_dir> <split_size> [--cpu-only|--gpu-only] [--max-parallel=N] [--text=FILE]${NC}"
@@ -58,7 +60,7 @@ IO_TYPE=${IO_TYPE:-soundfile}
 # Default settings
 RUN_CPU=true
 RUN_GPU=true
-MAX_PARALLEL=$(nproc)  # Default to number of CPU cores
+MAX_PARALLEL=4  # Default to number of CPU cores
 TEXT_FILE=""  # Optional text file
 
 # Parse optional arguments
@@ -267,7 +269,7 @@ run_job() {
     if [ "${job_type}" = "gpu" ]; then
         # Pass GPU rank directly to run_gpu.sh
         if [ -n "${gpu_rank}" ]; then
-            ./egs/run_gpu.sh \
+            /work/nvme/bbjs/ttao3/versa/egs/run_gpu.sh \
                 "${sub_pred_wavscp}" \
                 "${sub_gt_wavscp}" \
                 "${output_file}" \
@@ -276,7 +278,7 @@ run_job() {
                 "${sub_text_file}" \
                 "${gpu_rank}" > "${log_file}" 2>&1
         else
-            ./egs/run_gpu.sh \
+            /work/nvme/bbjs/ttao3/versa/egs/run_gpu.sh \
                 "${sub_pred_wavscp}" \
                 "${sub_gt_wavscp}" \
                 "${output_file}" \
@@ -285,7 +287,7 @@ run_job() {
                 "${sub_text_file}" > "${log_file}" 2>&1
         fi
     else
-        ./egs/run_cpu.sh \
+        /work/nvme/bbjs/ttao3/versa/egs/run_cpu.sh \
             "${sub_pred_wavscp}" \
             "${sub_gt_wavscp}" \
             "${output_file}" \
@@ -467,7 +469,7 @@ for ((i=0; i<${#pred_list[@]}; i++)); do
             "${sub_gt_wavscp}" \
             "${sub_text_file}" \
             "${SCORE_DIR}/result/$(basename "${sub_pred_wavscp}").result.gpu.txt" \
-            "egs/quality_check.yaml" \
+            "/work/nvme/bbjs/ttao3/versa/egs/titw.yaml" \
             "${job_prefix}" \
             "${chunk_info}" \
             "${gpu_rank}" &
@@ -488,7 +490,7 @@ for ((i=0; i<${#pred_list[@]}; i++)); do
             "${sub_gt_wavscp}" \
             "${sub_text_file}" \
             "${SCORE_DIR}/result/$(basename "${sub_pred_wavscp}").result.cpu.txt" \
-            "egs/quality_check.yaml" \
+            "/work/nvme/bbjs/ttao3/versa/egs/titw.yaml" \
             "${job_prefix}" \
             "${chunk_info}" &
         

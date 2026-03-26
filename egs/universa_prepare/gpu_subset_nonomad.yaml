@@ -49,7 +49,7 @@
 # -- plcmos: PLC-MOS score
 # -- aecmos: AEC-MOS score
 - name: pseudo_mos
-  predictor_types: ["utmos", "dnsmos", "plcmos", "singmos", "dnsmos_pro_bvcc", "dnsmos_pro_nisqa", "dnsmos_pro_vcc2018"] #remember to add utmosv2 to add metric
+  predictor_types: ["utmos", "dnsmos", "plcmos", "singmos", "utmosv2", "dnsmos_pro_bvcc", "dnsmos_pro_nisqa", "dnsmos_pro_vcc2018"]
   predictor_args:
     utmos:
       fs: 16000
@@ -59,8 +59,8 @@
       fs: 16000
     singmos:
       fs: 16000
-    # utmosv2:
-    #   fs: 16000
+    utmosv2:
+      fs: 16000
 
 # Word error rate with OpenAI-Whisper model
 # -- whisper_wer: word error rate of openai-whisper
@@ -69,17 +69,17 @@
   beam_size: 1
   text_cleaner: whisper_basic
 
-# # scoreq (reference-based) metric
-# # -- scoreq_ref: scoreq reference-based model
-# - name: scoreq_ref
-#   data_domain: natural
-#   model_cache: versa_cache/scoreq_pt-models
+# scoreq (reference-based) metric
+# -- scoreq_ref: scoreq reference-based model
+- name: scoreq_ref
+  data_domain: natural
+  model_cache: versa_cache/scoreq_pt-models
 
-# # scoreq (non-reference-based) metric
-# # -- scoreq_nr: scoreq non-reference-based model
-# - name: scoreq_nr
-#   data_domain: natural
-#   model_cache: versa_cache/scoreq_pt-models
+# scoreq (non-reference-based) metric
+# -- scoreq_nr: scoreq non-reference-based model
+- name: scoreq_nr
+  data_domain: natural
+  model_cache: versa_cache/scoreq_pt-models
 
 # Speech Enhancement-based Metrics
 # model tag can be any ESPnet-SE huggingface repo

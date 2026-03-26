@@ -1,0 +1,2 @@
+- name: nisqa
+  nisqa_model_path: ./tools/NISQA/weights/nisqa.tar

@@ -16,8 +16,8 @@
 
 # nomad (reference-based) metric
 # -- nomad: nomad reference-based model
-- name: nomad
-  model_cache: versa_cache/nomad_pt-models
+# - name: nomad
+#   model_cache: versa_cache/nomad_pt-models
 
 # srmr related metrics
 # -- srmr: speech-to-reverberation modulation energy ratio
