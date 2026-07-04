@@ -134,7 +134,8 @@ python versa/bin/scorer.py \
     --gt test/test_samples/test1.scp \
     --pred test/test_samples/test2.scp \
     --output_file test_result \
-    --io soundfile
+    --io soundfile \
+    --num_workers 4
 
 # With Kaldi-ARK style input (compatible with ESPnet)
 python versa/bin/scorer.py \
@@ -174,8 +175,14 @@ python versa/bin/scorer.py \
 ```
 
 `--resume` reads existing JSONL rows from `--output_file`, skips utterance keys
-that have already been scored, and appends only new results. This is useful for
+that have already been scored, and preserves their results. This is useful for
 long-running evaluations that are interrupted or restarted.
+
+`--num_workers` runs utterance-level CPU scoring in local worker processes while
+preserving input key order in the JSONL output. GPU scoring, metric-oriented
+scoring (`--scoring_mode metric`), and corpus/distributional metrics remain
+serial in this first implementation; `--num_workers > 1` cannot be combined
+with `--use_gpu`.
 
 `--scoring_mode metric` loads and runs one metric at a time, then releases
 metric resources before moving to the next metric. This can reduce peak GPU
