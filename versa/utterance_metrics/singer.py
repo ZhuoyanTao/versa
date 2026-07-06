@@ -3,11 +3,15 @@
 # Adapted from speaker similarity code for singer identity
 # Uses SSL singer identity models from SonyCSLParis/ssl-singer-identity
 
+import logging
+
 import numpy as np
 import torch
 
 from versa.audio_utils import resample_audio
 from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
+
+logger = logging.getLogger(__name__)
 
 
 def singer_model_setup(
@@ -80,6 +84,13 @@ def singer_metric(model, pred_x, gt_x, fs, target_sr=44100):
     Returns:
         dict: Dictionary containing singer similarity score
     """
+    if fs < target_sr:
+        logger.warning(
+            "Singer similarity with sampling rates below the %s Hz target may be "
+            "unreliable for singer identity embedding models.",
+            target_sr,
+        )
+
     # Resample to target sample rate if needed (singer models expect 44.1kHz)
     if fs != target_sr:
         gt_x = resample_audio(gt_x, fs, target_sr)
@@ -123,6 +134,13 @@ def singer_metric_batch(model, audio_batch, fs, target_sr=44100):
     Returns:
         np.ndarray: Singer embeddings (batch_size, 1000)
     """
+    if fs < target_sr:
+        logger.warning(
+            "Singer embeddings with sampling rates below the %s Hz target may be "
+            "unreliable for singer identity embedding models.",
+            target_sr,
+        )
+
     # Resample if needed
     if fs != target_sr:
         resampled_batch = []

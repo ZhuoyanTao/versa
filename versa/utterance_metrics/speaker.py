@@ -3,6 +3,8 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+import logging
+
 import numpy as np
 
 from versa.audio_utils import resample_audio
@@ -13,6 +15,8 @@ except ImportError:
     Speech2Embedding = None
 
 from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
+
+logger = logging.getLogger(__name__)
 
 
 def speaker_model_setup(
@@ -54,6 +58,12 @@ def speaker_model_setup(
 
 def speaker_metric(model, pred_x, gt_x, fs):
     # NOTE(jiatong): only work for 16000 Hz
+    if fs < 16000:
+        logger.warning(
+            "Speaker similarity with sampling rates below 16 kHz may be unreliable "
+            "for speaker embedding models such as the default RawNet3 model."
+        )
+
     if fs != 16000:
         gt_x = resample_audio(gt_x, fs, 16000)
         pred_x = resample_audio(pred_x, fs, 16000)

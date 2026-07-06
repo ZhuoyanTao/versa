@@ -8,9 +8,12 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Union
 
 import numpy as np
+
+from versa.audio_utils import resample_audio
+from versa.definition import BaseMetric, MetricMetadata, MetricCategory, MetricType
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +30,6 @@ except ImportError:
     )
     EMO2VEC = None
     EMO2VEC_AVAILABLE = False
-
-from versa.audio_utils import resample_audio
-from versa.definition import BaseMetric, MetricMetadata, MetricCategory, MetricType
 
 
 class Emo2vecNotAvailableError(RuntimeError):
@@ -115,6 +115,12 @@ class Emo2vecMetric(BaseMetric):
         gt_x = np.asarray(gt_x)
 
         # NOTE(jiatong): only work for 16000 Hz
+        if fs < 16000:
+            logger.warning(
+                "Emotion similarity with sampling rates below 16 kHz may be "
+                "unreliable for EMO2VEC embedding models."
+            )
+
         if fs != 16000:
             gt_x = resample_audio(gt_x, fs, 16000)
             pred_x = resample_audio(pred_x, fs, 16000)

@@ -45,8 +45,16 @@ from versa.utterance_metrics.sheet_ssqa import (
     SheetSsqaMetric,
     register_sheet_ssqa_metric,
 )
-from versa.utterance_metrics.singer import SingerMetric, register_singer_metric
-from versa.utterance_metrics.speaker import SpeakerMetric, register_speaker_metric
+from versa.utterance_metrics.singer import (
+    SingerMetric,
+    register_singer_metric,
+    singer_metric,
+)
+from versa.utterance_metrics.speaker import (
+    SpeakerMetric,
+    register_speaker_metric,
+    speaker_metric,
+)
 from versa.utterance_metrics.squim import (
     SquimNoRefMetric,
     SquimRefMetric,
@@ -558,6 +566,35 @@ def test_speaker_metric_class_returns_existing_key(monkeypatch):
     assert calls["fs"] == 22050
 
 
+def test_speaker_metric_warns_for_low_sample_rate(caplog):
+    class DummyEmbedding:
+        def __init__(self, values):
+            self.values = np.asarray([values], dtype=np.float32)
+
+        def squeeze(self, axis):
+            self.values = np.squeeze(self.values, axis=axis)
+            return self
+
+        def cpu(self):
+            return self
+
+        def numpy(self):
+            return self.values
+
+    class DummySpeakerModel:
+        def __call__(self, audio):
+            return DummyEmbedding([1.0, 0.0])
+
+    pred, ref = _audio_pair(length=8000)
+    caplog.set_level("WARNING", logger="versa.utterance_metrics.speaker")
+
+    scores = speaker_metric(DummySpeakerModel(), pred, ref, 8000)
+
+    assert scores == {"spk_similarity": pytest.approx(1.0)}
+    assert "below 16 kHz may be unreliable" in caplog.text
+    assert "default RawNet3" in caplog.text
+
+
 def test_register_speaker_metric():
     registry = MetricRegistry()
 
@@ -606,6 +643,24 @@ def test_singer_metric_class_returns_existing_key(monkeypatch):
     assert calls["setup"]["model_name"] == "contrastive"
     assert calls["fs"] == 22050
     assert calls["target_sr"] == 48000
+
+
+def test_singer_metric_warns_for_low_sample_rate(caplog):
+    class DummySingerModel:
+        def parameters(self):
+            yield torch.nn.Parameter(torch.empty(0))
+
+        def __call__(self, audio):
+            return torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+
+    pred, ref = _audio_pair(length=8000)
+    caplog.set_level("WARNING", logger="versa.utterance_metrics.singer")
+
+    scores = singer_metric(DummySingerModel(), pred, ref, 8000)
+
+    assert scores == {"singer_similarity": pytest.approx(1.0)}
+    assert "below the 44100 Hz target may be unreliable" in caplog.text
+    assert "singer identity embedding models" in caplog.text
 
 
 def test_register_singer_metric():

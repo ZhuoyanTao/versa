@@ -7,6 +7,28 @@ import pytest
 from versa.utterance_metrics.emo_similarity import Emo2vecMetric, is_emo2vec_available
 
 
+def test_emotion_metric_warns_for_low_sample_rate(caplog):
+    class DummyModel:
+        def extract_feature(self, audio, fs=16000):
+            return np.asarray([1.0, 0.0], dtype=np.float32)
+
+    metric = object.__new__(Emo2vecMetric)
+    metric.model = DummyModel()
+    audio_8k_1 = np.random.random(8000)
+    audio_8k_2 = np.random.random(8000)
+    caplog.set_level("WARNING", logger="versa.utterance_metrics.emo_similarity")
+
+    result = metric.compute(
+        audio_8k_1,
+        audio_8k_2,
+        metadata={"sample_rate": 8000},
+    )
+
+    assert result == {"emotion_similarity": pytest.approx(1.0)}
+    assert "below 16 kHz may be unreliable" in caplog.text
+    assert "EMO2VEC embedding models" in caplog.text
+
+
 # -------------------------------
 # Helper: Generate a fixed WAV file
 # -------------------------------
@@ -132,7 +154,7 @@ def test_utterance_emotion(use_gpu, fixed_audio, fixed_audio_2):
     emotion_sim = result["emotion_similarity"]
     assert isinstance(emotion_sim, float), "emotion_similarity should be a float"
 
-    # Check that the similarity score is reasonable (between -1 and 1 for cosine similarity)
+    # Check that the similarity score is reasonable for cosine similarity.
     assert (
         -1.0 <= emotion_sim <= 1.0
     ), f"Emotion similarity should be between -1 and 1, got {emotion_sim}"
