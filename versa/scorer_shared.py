@@ -227,6 +227,13 @@ def _write_jsonl_scores(
             f.write(f"{printable_result}\n")
 
 
+def _write_jsonl_score(file_handle, utt_score: Dict[str, Any]) -> None:
+    """Write one utterance score and flush it for resume checkpointing."""
+    printable_result = json.dumps(utt_score, default=default_numpy_serializer)
+    file_handle.write(f"{printable_result}\n")
+    file_handle.flush()
+
+
 def _release_metric_resources() -> None:
     """Best-effort cleanup after unloading model-backed metrics."""
     gc.collect()
@@ -420,6 +427,7 @@ class VersaScorer:
                 io=io,
                 existing_scores=existing_scores,
                 completed_keys=completed_keys,
+                resume=resume,
                 num_workers=num_workers,
             )
 
@@ -508,6 +516,7 @@ class VersaScorer:
         io: str,
         existing_scores: Dict[str, Dict[str, Any]],
         completed_keys: set,
+        resume: bool,
         num_workers: int,
     ) -> List[Dict[str, Any]]:
         """Score utterances in process-local metric suites."""
@@ -536,22 +545,34 @@ class VersaScorer:
             for name, metric in metric_suite.metrics.items()
         ]
         new_scores = {}
-        with ProcessPoolExecutor(
-            max_workers=num_workers,
-            initializer=_initialize_score_worker,
-            initargs=(metric_specs,),
-        ) as executor:
-            results = executor.map(_score_utterance_worker, jobs)
-            for result in tqdm(results, total=len(jobs)):
-                if result is not None:
-                    new_scores[result["key"]] = result
+        file_handle = None
+        if output_file:
+            mode = "a" if resume else "w"
+            if resume:
+                _ensure_append_starts_on_new_line(output_file)
+            file_handle = open(output_file, mode, encoding="utf-8")
+
+        try:
+            with ProcessPoolExecutor(
+                max_workers=num_workers,
+                initializer=_initialize_score_worker,
+                initargs=(metric_specs,),
+            ) as executor:
+                results = executor.map(_score_utterance_worker, jobs)
+                for result in tqdm(results, total=len(jobs)):
+                    if result is not None:
+                        new_scores[result["key"]] = result
+                        if file_handle:
+                            _write_jsonl_score(file_handle, result)
+        finally:
+            if file_handle:
+                file_handle.close()
 
         score_info = [
             existing_scores.get(key, new_scores.get(key))
             for key in gen_files
             if key in existing_scores or key in new_scores
         ]
-        _write_jsonl_scores(output_file, score_info)
         self.logger.info("Scoring completed. Results saved to %s", output_file)
         return score_info
 

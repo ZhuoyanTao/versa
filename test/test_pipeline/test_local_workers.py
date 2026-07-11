@@ -98,7 +98,11 @@ def test_parallel_resume_skips_existing_key_and_writes_input_order(tmp_path):
 
     assert [score["key"] for score in score_info] == keys
     assert score_info[-1] == {"key": completed_key, "constant": 3.0}
-    assert _read_jsonl(output_file) == score_info
+    assert _read_jsonl(output_file) == [
+        {"key": completed_key, "constant": 3.0},
+        {"key": keys[0], "constant": 1.0},
+        {"key": keys[1], "constant": 1.0},
+    ]
 
 
 def test_one_worker_uses_existing_serial_path(monkeypatch):

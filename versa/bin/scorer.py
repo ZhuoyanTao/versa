@@ -324,6 +324,13 @@ def main():
         )
     ]
 
+    if args.num_workers > 1 and args.scoring_mode == "metric":
+        parser.error(
+            "--num_workers > 1 is only supported with --scoring_mode utterance"
+        )
+    if args.num_workers > 1 and len(utterance_score_config) == 0:
+        parser.error("--num_workers > 1 requires at least one utterance-level metric")
+
     score_info = []
     if args.scoring_mode == "metric":
         score_info = scorer.score_utterances_by_metric(
