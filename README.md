@@ -176,13 +176,18 @@ python versa/bin/scorer.py \
 
 `--resume` reads existing JSONL rows from `--output_file`, skips utterance keys
 that have already been scored, and preserves their results. This is useful for
-long-running evaluations that are interrupted or restarted.
+long-running evaluations that are interrupted or restarted. With
+`--num_workers > 1`, newly computed rows are appended in input key order, while
+existing rows keep their original positions in the file; the returned scores are
+ordered by input key, but a resumed JSONL file may not be globally sorted by
+input key.
 
 `--num_workers` runs utterance-level CPU scoring in local worker processes while
-preserving input key order in the JSONL output. GPU scoring, metric-oriented
-scoring (`--scoring_mode metric`), and corpus/distributional metrics remain
-serial in this first implementation; `--num_workers > 1` cannot be combined
-with `--use_gpu`.
+preserving input key order in newly written JSONL output for non-resume runs.
+GPU scoring, metric-oriented scoring (`--scoring_mode metric`), and
+corpus/distributional metrics remain serial in this first implementation;
+`--num_workers > 1` cannot be combined with `--use_gpu`, `--scoring_mode
+metric`, or corpus-only configurations.
 
 `--scoring_mode metric` loads and runs one metric at a time, then releases
 metric resources before moving to the next metric. This can reduce peak GPU

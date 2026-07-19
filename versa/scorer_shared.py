@@ -43,10 +43,7 @@ def _initialize_score_worker(metric_specs):
     """Create process-local metric instances for utterance scoring."""
     global _worker_metric_suite
     _worker_metric_suite = MetricSuite(
-        {
-            name: metric_class(config)
-            for name, metric_class, config in metric_specs
-        }
+        {name: metric_class(config) for name, metric_class, config in metric_specs}
     )
 
 
@@ -58,23 +55,17 @@ def _score_utterance_worker(utterance):
     gen_sr, gen_wav = load_audio(gen_file, io)
     gen_wav = wav_normalize(gen_wav)
     metric_names = _worker_metric_suite.metrics.keys()
-    if not scorer._validate_audio(
-        gen_wav, gen_sr, key, "generated", metric_names
-    ):
+    if not scorer._validate_audio(gen_wav, gen_sr, key, "generated", metric_names):
         return None
 
     gt_wav, gt_sr = None, None
     if gt_file is not None:
         gt_sr, gt_wav = load_audio(gt_file, io)
         gt_wav = wav_normalize(gt_wav)
-        if not scorer._validate_audio(
-            gt_wav, gt_sr, key, "ground truth", metric_names
-        ):
+        if not scorer._validate_audio(gt_wav, gt_sr, key, "ground truth", metric_names):
             return None
 
-    gen_wav, gt_wav, gen_sr = scorer._align_sample_rates(
-        gen_wav, gt_wav, gen_sr, gt_sr
-    )
+    gen_wav, gt_wav, gen_sr = scorer._align_sample_rates(gen_wav, gt_wav, gen_sr, gt_sr)
     return ScoreProcessor(_worker_metric_suite).process_batch(
         [(key, gen_wav, gt_wav, gen_sr, text)]
     )[0]
@@ -125,10 +116,7 @@ def load_score_modules(
         )
     ]
     return scorer.load_metrics(
-        score_config,
-        use_gt=use_gt,
-        use_gt_text=use_gt_text,
-        use_gpu=use_gpu,
+        score_config, use_gt=use_gt, use_gt_text=use_gt_text, use_gpu=use_gpu,
     )
 
 
@@ -214,8 +202,7 @@ def _ensure_append_starts_on_new_line(output_file: str) -> None:
 
 
 def _write_jsonl_scores(
-    output_file: Optional[str],
-    score_info: List[Dict[str, Any]],
+    output_file: Optional[str], score_info: List[Dict[str, Any]],
 ) -> None:
     """Write utterance scores as JSONL in the current utterance order."""
     if not output_file:
@@ -448,11 +435,7 @@ class VersaScorer:
                 gen_wav = wav_normalize(gen_wav)
 
                 if not self._validate_audio(
-                    gen_wav,
-                    gen_sr,
-                    key,
-                    "generated",
-                    metric_suite.metrics.keys(),
+                    gen_wav, gen_sr, key, "generated", metric_suite.metrics.keys(),
                 ):
                     continue
 
@@ -469,11 +452,7 @@ class VersaScorer:
                     gt_wav = wav_normalize(gt_wav)
 
                     if not self._validate_audio(
-                        gt_wav,
-                        gt_sr,
-                        key,
-                        "ground truth",
-                        metric_suite.metrics.keys(),
+                        gt_wav, gt_sr, key, "ground truth", metric_suite.metrics.keys(),
                     ):
                         continue
 
@@ -605,10 +584,7 @@ class VersaScorer:
                 continue
 
             metric_suite = self.load_metrics(
-                [config],
-                use_gt=use_gt,
-                use_gt_text=use_gt_text,
-                use_gpu=use_gpu,
+                [config], use_gt=use_gt, use_gt_text=use_gt_text, use_gpu=use_gpu,
             )
             metric_suite = MetricSuite(
                 {
