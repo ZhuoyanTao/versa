@@ -7,6 +7,8 @@ import gc
 import json
 import logging
 import os
+from concurrent.futures import ProcessPoolExecutor
+
 import kaldiio
 import soundfile as sf
 import yaml
@@ -33,6 +35,40 @@ from versa.utils_shared import (
     load_audio,
     wav_normalize,
 )
+
+_worker_metric_suite = None
+
+
+def _initialize_score_worker(metric_specs):
+    """Create process-local metric instances for utterance scoring."""
+    global _worker_metric_suite
+    _worker_metric_suite = MetricSuite(
+        {name: metric_class(config) for name, metric_class, config in metric_specs}
+    )
+
+
+def _score_utterance_worker(utterance):
+    """Load and score one utterance without writing output files."""
+    key, gen_file, gt_file, text, io = utterance
+    scorer = VersaScorer(MetricRegistry())
+
+    gen_sr, gen_wav = load_audio(gen_file, io)
+    gen_wav = wav_normalize(gen_wav)
+    metric_names = _worker_metric_suite.metrics.keys()
+    if not scorer._validate_audio(gen_wav, gen_sr, key, "generated", metric_names):
+        return None
+
+    gt_wav, gt_sr = None, None
+    if gt_file is not None:
+        gt_sr, gt_wav = load_audio(gt_file, io)
+        gt_wav = wav_normalize(gt_wav)
+        if not scorer._validate_audio(gt_wav, gt_sr, key, "ground truth", metric_names):
+            return None
+
+    gen_wav, gt_wav, gen_sr = scorer._align_sample_rates(gen_wav, gt_wav, gen_sr, gt_sr)
+    return ScoreProcessor(_worker_metric_suite).process_batch(
+        [(key, gen_wav, gt_wav, gen_sr, text)]
+    )[0]
 
 
 def audio_loader_setup(audio, io):
@@ -180,6 +216,13 @@ def _write_jsonl_scores(
         for utt_score in score_info:
             printable_result = json.dumps(utt_score, default=default_numpy_serializer)
             f.write(f"{printable_result}\n")
+
+
+def _write_jsonl_score(file_handle, utt_score: Dict[str, Any]) -> None:
+    """Write one utterance score and flush it for resume checkpointing."""
+    printable_result = json.dumps(utt_score, default=default_numpy_serializer)
+    file_handle.write(f"{printable_result}\n")
+    file_handle.flush()
 
 
 def _release_metric_resources() -> None:
@@ -332,9 +375,12 @@ class VersaScorer:
         io: str = "kaldi",
         batch_size: int = 1,
         resume: bool = False,
+        num_workers: int = 1,
     ) -> List[Dict[str, Any]]:
         """Score individual utterances."""
 
+        if num_workers < 1:
+            raise ValueError("num_workers must be at least 1")
         metric_suite = MetricSuite(
             {
                 name: metric
@@ -342,6 +388,13 @@ class VersaScorer:
                 if metric.get_metadata().category != MetricCategory.DISTRIBUTIONAL
             }
         )
+        if num_workers > 1 and any(
+            getattr(metric, "config", {}).get("use_gpu", False)
+            for metric in metric_suite.metrics.values()
+        ):
+            raise ValueError(
+                "Local multiprocessing is CPU-only; use num_workers=1 with GPU metrics"
+            )
         existing_scores = _load_existing_jsonl_scores(output_file) if resume else {}
         completed_keys = set(existing_scores).intersection(gen_files)
         if resume and output_file:
@@ -353,6 +406,20 @@ class VersaScorer:
         elif resume:
             self.logger.warning(
                 "Resume requested without output_file; scoring normally"
+            )
+
+        if num_workers > 1:
+            return self._score_utterances_parallel(
+                gen_files,
+                metric_suite,
+                gt_files=gt_files,
+                text_info=text_info,
+                output_file=output_file,
+                io=io,
+                existing_scores=existing_scores,
+                completed_keys=completed_keys,
+                resume=resume,
+                num_workers=num_workers,
             )
 
         processor = ScoreProcessor(metric_suite, output_file, resume=resume)
@@ -428,6 +495,76 @@ class VersaScorer:
             processor.close()
 
         self.logger.info(f"Scoring completed. Results saved to {output_file}")
+        return score_info
+
+    def _score_utterances_parallel(
+        self,
+        gen_files: Dict[str, str],
+        metric_suite: MetricSuite,
+        gt_files: Optional[Dict[str, str]],
+        text_info: Optional[Dict[str, str]],
+        output_file: Optional[str],
+        io: str,
+        existing_scores: Dict[str, Dict[str, Any]],
+        completed_keys: set,
+        resume: bool,
+        num_workers: int,
+    ) -> List[Dict[str, Any]]:
+        """Score utterances in process-local metric suites."""
+        jobs = []
+        for key in gen_files:
+            if key in completed_keys:
+                continue
+            if gt_files is not None and key not in gt_files:
+                self.logger.warning("Ground truth not found for key %s, skipping", key)
+                continue
+            if text_info is not None and key not in text_info:
+                self.logger.warning("Text not found for key %s, skipping", key)
+                continue
+            jobs.append(
+                (
+                    key,
+                    gen_files[key],
+                    gt_files[key] if gt_files is not None else None,
+                    text_info.get(key) if text_info is not None else None,
+                    io,
+                )
+            )
+
+        metric_specs = [
+            (name, metric.__class__, metric.config)
+            for name, metric in metric_suite.metrics.items()
+        ]
+        new_scores = {}
+        file_handle = None
+        if output_file:
+            mode = "a" if resume else "w"
+            if resume:
+                _ensure_append_starts_on_new_line(output_file)
+            file_handle = open(output_file, mode, encoding="utf-8")
+
+        try:
+            with ProcessPoolExecutor(
+                max_workers=num_workers,
+                initializer=_initialize_score_worker,
+                initargs=(metric_specs,),
+            ) as executor:
+                results = executor.map(_score_utterance_worker, jobs)
+                for result in tqdm(results, total=len(jobs)):
+                    if result is not None:
+                        new_scores[result["key"]] = result
+                        if file_handle:
+                            _write_jsonl_score(file_handle, result)
+        finally:
+            if file_handle:
+                file_handle.close()
+
+        score_info = [
+            existing_scores.get(key, new_scores.get(key))
+            for key in gen_files
+            if key in existing_scores or key in new_scores
+        ]
+        self.logger.info("Scoring completed. Results saved to %s", output_file)
         return score_info
 
     def score_utterances_by_metric(

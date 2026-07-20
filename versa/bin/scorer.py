@@ -52,6 +52,12 @@ def get_parser() -> argparse.Namespace:
         "--use_gpu", action="store_true", help="whether to use GPU if it can"
     )
     parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=1,
+        help="Number of local CPU worker processes for utterance scoring.",
+    )
+    parser.add_argument(
         "--io",
         type=str,
         default="kaldi",
@@ -184,6 +190,11 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
+    if args.num_workers < 1:
+        parser.error("--num_workers must be at least 1")
+    if args.num_workers > 1 and args.use_gpu:
+        parser.error("--num_workers > 1 is CPU-only and cannot be used with --use_gpu")
+
     if args.list_metrics or args.describe_metric or args.recommend_config:
         try:
             if args.list_metrics:
@@ -311,6 +322,13 @@ def main():
         )
     ]
 
+    if args.num_workers > 1 and args.scoring_mode == "metric":
+        parser.error(
+            "--num_workers > 1 is only supported with --scoring_mode utterance"
+        )
+    if args.num_workers > 1 and len(utterance_score_config) == 0:
+        parser.error("--num_workers > 1 requires at least one utterance-level metric")
+
     score_info = []
     if args.scoring_mode == "metric":
         score_info = scorer.score_utterances_by_metric(
@@ -354,6 +372,7 @@ def main():
             output_file=args.output_file,
             io=args.io,
             resume=args.resume,
+            num_workers=args.num_workers,
         )
         logging.info("Summary: {}".format(compute_summary(score_info)))
     elif utterance_metric_count == 0:
