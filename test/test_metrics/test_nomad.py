@@ -158,6 +158,20 @@ class TestNomadMetric:
         assert metric.model is not None
         mock_nomad_class.assert_called_once_with(device="cpu", cache_dir="test_cache")
 
+    @patch("versa.utterance_metrics.nomad.Nomad")
+    def test_cache_dir_takes_precedence_over_legacy_model_cache(self, mock_nomad_class):
+        mock_nomad_class.return_value = Mock()
+
+        NomadMetric(
+            {
+                "use_gpu": False,
+                "cache_dir": "shared-cache",
+                "model_cache": "legacy-cache",
+            }
+        )
+
+        mock_nomad_class.assert_called_once_with(device="cpu", cache_dir="shared-cache")
+
     def test_compute_with_none_predictions(self):
         """Test that compute raises error with None predictions."""
         with patch("versa.utterance_metrics.nomad.Nomad") as mock_nomad_class:

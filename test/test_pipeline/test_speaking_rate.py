@@ -23,7 +23,7 @@ class DummyWhisperModel:
 
 class DummyWhisper:
     @staticmethod
-    def load_model(model_tag, device="cpu"):
+    def load_model(model_tag, device="cpu", download_root=None):
         return DummyWhisperModel()
 
 

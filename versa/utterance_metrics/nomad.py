@@ -58,7 +58,10 @@ class NomadMetric(BaseMetric):
             )
 
         self.use_gpu = self.config.get("use_gpu", False)
-        self.cache_dir = self.config.get("model_cache", "versa_cache/nomad_pt-models")
+        self.cache_dir = self.config.get(
+            "cache_dir",
+            self.config.get("model_cache", "versa_cache/nomad_pt-models"),
+        )
 
         try:
             self.model = self._setup_model()

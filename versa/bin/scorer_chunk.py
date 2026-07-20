@@ -19,6 +19,8 @@ from versa.definition import MetricCategory
 from versa.config_validation import validate_score_config
 from versa.scorer_shared import (
     audio_loader_setup,
+    configure_metric_cache_dirs,
+    configure_shared_cache_environment,
     list_scoring,
     load_audio,
     load_score_modules,
@@ -324,6 +326,8 @@ def main():
 
     with open(args.score_config, "r", encoding="utf-8") as f:
         score_config = yaml.safe_load(f)
+    configure_shared_cache_environment(args.cache_folder)
+    score_config = configure_metric_cache_dirs(score_config, args.cache_folder)
 
     scorer = VersaScorer()
     try:
@@ -408,8 +412,6 @@ def main():
             continue
         corpus_config = dict(config)
         corpus_config.setdefault("io", args.io)
-        if args.cache_folder and "cache_dir" not in corpus_config:
-            corpus_config["cache_dir"] = str(Path(args.cache_folder) / config["name"])
         corpus_score_config.append(corpus_config)
 
     corpus_score_modules = scorer.load_metrics(

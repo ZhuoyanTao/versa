@@ -13,6 +13,7 @@ import kaldiio
 import soundfile as sf
 import yaml
 from numbers import Real
+from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from tqdm import tqdm
 
@@ -121,6 +122,84 @@ def load_score_modules(
         use_gt_text=use_gt_text,
         use_gpu=use_gpu,
     )
+
+
+def _metric_cache_namespace(metric_name):
+    """Return a collision-safe shared namespace for a registered metric."""
+    name = str(metric_name).lower()
+    if name.startswith(("qwen2_audio_", "qwen_omni_")) or name in {
+        "hubert_wer",
+        "pam",
+    }:
+        return "huggingface"
+    if name in {"asr_matching", "speaking_rate", "whisper_wer"}:
+        return "whisper"
+    if name in {
+        "arecho",
+        "espnet_wer",
+        "owsm_lid",
+        "owsm_wer",
+        "se_snr",
+        "speaker",
+        "universa",
+    }:
+        return "espnet_model_zoo"
+    if name in {
+        "multigauss",
+        "pseudo_mos",
+        "sheet_ssqa",
+        "squim_no_ref",
+        "squim_ref",
+        "vad",
+    }:
+        return "torch"
+    return name
+
+
+def configure_metric_cache_dirs(score_config, cache_folder=None):
+    """Apply a shared cache root without overriding metric-specific settings.
+
+    Metrics backed by the same model hub receive a shared namespace. Other
+    metrics receive their own directory so unrelated intermediate files cannot
+    collide. Configurations that already declare ``cache_dir`` remain
+    authoritative.
+    """
+    if cache_folder is None:
+        return score_config
+
+    cache_root = Path(cache_folder).expanduser()
+    return [
+        {
+            **config,
+            "cache_dir": config.get(
+                "cache_dir",
+                str(cache_root / _metric_cache_namespace(config["name"])),
+            ),
+        }
+        for config in score_config
+    ]
+
+
+def configure_shared_cache_environment(cache_folder=None):
+    """Point common model hubs at a single shareable cache root."""
+    if cache_folder is None:
+        return None
+
+    cache_root = Path(cache_folder).expanduser().resolve()
+    hf_cache = cache_root / "huggingface"
+    torch_cache = cache_root / "torch"
+    cache_root.mkdir(parents=True, exist_ok=True)
+
+    os.environ["VERSA_CACHE_DIR"] = str(cache_root)
+    os.environ["VERSA_HF_CACHE_DIR"] = str(hf_cache)
+    os.environ["HF_HOME"] = str(hf_cache)
+    os.environ["HF_HUB_CACHE"] = str(hf_cache)
+    os.environ["TRANSFORMERS_CACHE"] = str(hf_cache)
+    os.environ["HF_DATASETS_CACHE"] = str(hf_cache / "datasets")
+    os.environ["TORCH_HOME"] = str(torch_cache)
+    os.environ["NEMO_CACHE_DIR"] = str(cache_root / "nemo")
+    os.environ["XDG_CACHE_HOME"] = str(cache_root)
+    return cache_root
 
 
 def list_scoring(

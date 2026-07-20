@@ -59,6 +59,12 @@ jupyter = [
     "jupyter>=1.0.0",
     "matplotlib>=3.3.0",
 ]
+songeval = [
+    "einops",
+    "muq==0.1.0",
+    "omegaconf>=2.3,<3",
+    "safetensors",
+]
 audio = [
     "audioread",
     "ci-sdr",

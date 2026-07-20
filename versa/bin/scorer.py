@@ -220,6 +220,8 @@ def main():
     from versa.definition import MetricCategory
     from versa.scorer_shared import (
         audio_loader_setup,
+        configure_metric_cache_dirs,
+        configure_shared_cache_environment,
         VersaScorer,
         compute_summary,
     )
@@ -253,6 +255,8 @@ def main():
 
     with open(args.score_config, "r", encoding="utf-8") as f:
         score_config = yaml.safe_load(f)
+    configure_shared_cache_environment(args.cache_folder)
+    score_config = configure_metric_cache_dirs(score_config, args.cache_folder)
 
     # Validate before any scoring or model setup begins.
     scorer = VersaScorer()

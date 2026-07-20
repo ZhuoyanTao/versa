@@ -1,5 +1,11 @@
 # SongEval Config
 # More info in https://github.com/ASLP-lab/SongEval
 - name: songeval
-
+  # The installer places the pinned SongEval checkout under this cache.
+  cache_dir: versa_cache
+  # Set to a complete local checkout to override cache_dir/SongEval.
+  # model_dir: /path/to/SongEval
+  # Set to a local MuQ model directory together with offline: true for no-network runs.
+  # muq_model: /path/to/MuQ-large-msd-iter
+  # offline: false
 

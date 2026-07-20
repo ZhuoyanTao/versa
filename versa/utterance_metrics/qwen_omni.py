@@ -85,6 +85,7 @@ def qwen_omni_model_setup(
     start_prompt: str = "The following is a conversation with an AI assistant. The assistant is helpful, honest, and harmless.",
     use_gpu: bool = True,
     device_map: Optional[str] = None,
+    cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Set up the Qwen2-Audio model for speech analysis.
 
@@ -103,11 +104,12 @@ def qwen_omni_model_setup(
         )
     target_device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
     device_map = device_map or target_device
-    processor = Qwen2_5OmniProcessor.from_pretrained(model_tag)
+    processor = Qwen2_5OmniProcessor.from_pretrained(model_tag, cache_dir=cache_dir)
     model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
         model_tag,
         torch_dtype="auto",
         device_map=device_map,
+        cache_dir=cache_dir,
         # attn_implementation="flash_attention_2", NOTE(jiatong): to add
     )
     if device_map in {None, "cpu", "cuda"}:
@@ -280,11 +282,13 @@ class QwenOmniMetric(BaseMetric):
         self.max_length = self.config.get("max_length", 500)
         self.use_gpu = self.config.get("use_gpu", True)
         self.device_map = self.config.get("device_map")
+        self.cache_dir = self.config.get("cache_dir")
         self.qwen_utils = qwen_omni_model_setup(
             model_tag=self.model_tag,
             start_prompt=self.start_prompt,
             use_gpu=self.use_gpu,
             device_map=self.device_map,
+            cache_dir=self.cache_dir,
         )
 
     def compute(self, predictions, references=None, metadata=None):

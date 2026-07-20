@@ -29,6 +29,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from versa.definition import BaseMetric, MetricMetadata, MetricCategory, MetricType
+from versa.huggingface_cache import configure_huggingface_cache, get_hf_cache_dir
 
 # Handle optional dependencies
 try:
@@ -96,6 +97,7 @@ class PAM:
         model_fp: Optional[Union[Path, str]] = None,
         model_config: Optional[Dict[str, Any]] = None,
         use_cuda: bool = False,
+        cache_dir: Optional[Union[Path, str]] = None,
     ):
         """
         Initialize PAM model.
@@ -110,10 +112,11 @@ class PAM:
         self.device = torch.device(
             "cuda" if use_cuda and torch.cuda.is_available() else "cpu"
         )
+        self.cache_dir = cache_dir
 
         # Automatically download model if not provided
         if not model_fp:
-            model_fp = hf_hub_download(HF_REPO, CLAP_VERSION)
+            model_fp = hf_hub_download(HF_REPO, CLAP_VERSION, cache_dir=self.cache_dir)
 
         self.model_fp = model_fp
         self.use_cuda = use_cuda
@@ -157,7 +160,9 @@ class PAM:
         clap.eval()  # set clap in eval mode
 
         # Setup tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(args.text_model)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.text_model, cache_dir=self.cache_dir
+        )
         tokenizer.add_special_tokens({"pad_token": "!"})
 
         # Move model to appropriate device
@@ -280,7 +285,10 @@ class PamMetric(BaseMetric):
             )
 
         self.repro = self.config.get("repro", True)
-        self.cache_dir = self.config.get("cache_dir", "versa_cache/pam")
+        self.cache_dir = get_hf_cache_dir(
+            self.config.get("cache_dir", "versa_cache/pam")
+        )
+        configure_huggingface_cache(self.cache_dir)
         self.use_gpu = self.config.get("use_gpu", False)
 
         # Extract model configuration from config
@@ -306,7 +314,11 @@ class PamMetric(BaseMetric):
         }
 
         try:
-            self.model = PAM(model_config=model_config, use_cuda=self.use_gpu)
+            self.model = PAM(
+                model_config=model_config,
+                use_cuda=self.use_gpu,
+                cache_dir=self.cache_dir,
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to initialize PAM model: {str(e)}") from e
 

@@ -285,6 +285,7 @@ Then, output only the predicted singing style from the list above.
 def qwen2_model_setup(
     model_tag: str = "Qwen/Qwen2-Audio-7B-Instruct",
     start_prompt: str = "The following is a conversation with an AI assistant. The assistant is helpful, honest, and harmless.",
+    cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Set up the Qwen2-Audio model for speech analysis.
 
@@ -301,9 +302,9 @@ def qwen2_model_setup(
         raise RuntimeError(
             "Qwen2Audio is used for evaluation while transformers is not installed (could be a version issue)."
         )
-    processor = AutoProcessor.from_pretrained(model_tag)
+    processor = AutoProcessor.from_pretrained(model_tag, cache_dir=cache_dir)
     model = Qwen2AudioForConditionalGeneration.from_pretrained(
-        model_tag, device_map="auto"
+        model_tag, device_map="auto", cache_dir=cache_dir
     )
 
     start_conversation = [
@@ -466,9 +467,11 @@ class Qwen2AudioMetric(BaseMetric):
             raise ValueError("metric_name must be provided")
         self.prompt = self.config.get("prompt")
         self.max_length = self.config.get("max_length", 1000)
+        self.cache_dir = self.config.get("cache_dir")
         self.qwen_utils = qwen2_model_setup(
             model_tag=self.model_tag,
             start_prompt=self.start_prompt,
+            cache_dir=self.cache_dir,
         )
 
     def compute(self, predictions, references=None, metadata=None):
