@@ -23,13 +23,18 @@ def get_parser() -> argparse.Namespace:
     """Get argument parser."""
     parser = argparse.ArgumentParser(description="Speech Evaluation Interface")
     parser.add_argument(
-        "--pred", type=str, help="Wav.scp for generated waveforms.",
+        "--pred",
+        type=str,
+        help="Wav.scp for generated waveforms.",
     )
     parser.add_argument(
         "--score_config", type=str, default=None, help="Configuration of Score Config"
     )
     parser.add_argument(
-        "--gt", type=str, default=None, help="Wav.scp for ground truth waveforms.",
+        "--gt",
+        type=str,
+        default=None,
+        help="Wav.scp for ground truth waveforms.",
     )
     parser.add_argument(
         "--text", type=str, default=None, help="Path of ground truth transcription."
@@ -122,7 +127,9 @@ def get_parser() -> argparse.Namespace:
         help="Maximum outlier examples to keep per metric in --report.",
     )
     parser.add_argument(
-        "--list-metrics", action="store_true", help="List registered metrics and exit.",
+        "--list-metrics",
+        action="store_true",
+        help="List registered metrics and exit.",
     )
     parser.add_argument(
         "--describe-metric",
@@ -411,7 +418,13 @@ def main():
 
 
 def _write_report(
-    score_info, report_path, *, report_format, group_by, outlier_limit, registry,
+    score_info,
+    report_path,
+    *,
+    report_format,
+    group_by,
+    outlier_limit,
+    registry,
 ):
     from pathlib import Path
 
@@ -434,7 +447,10 @@ def _write_report(
         }.get(output_path.suffix.lower(), "html")
 
     analysis = analyze_records(
-        score_info, group_by=group_by, outlier_limit=outlier_limit, registry=registry,
+        score_info,
+        group_by=group_by,
+        outlier_limit=outlier_limit,
+        registry=registry,
     )
     if report_format == "html":
         write_html_report(analysis, report_path)

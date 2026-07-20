@@ -116,7 +116,10 @@ def load_score_modules(
         )
     ]
     return scorer.load_metrics(
-        score_config, use_gt=use_gt, use_gt_text=use_gt_text, use_gpu=use_gpu,
+        score_config,
+        use_gt=use_gt,
+        use_gt_text=use_gt_text,
+        use_gpu=use_gpu,
     )
 
 
@@ -202,7 +205,8 @@ def _ensure_append_starts_on_new_line(output_file: str) -> None:
 
 
 def _write_jsonl_scores(
-    output_file: Optional[str], score_info: List[Dict[str, Any]],
+    output_file: Optional[str],
+    score_info: List[Dict[str, Any]],
 ) -> None:
     """Write utterance scores as JSONL in the current utterance order."""
     if not output_file:
@@ -435,7 +439,11 @@ class VersaScorer:
                 gen_wav = wav_normalize(gen_wav)
 
                 if not self._validate_audio(
-                    gen_wav, gen_sr, key, "generated", metric_suite.metrics.keys(),
+                    gen_wav,
+                    gen_sr,
+                    key,
+                    "generated",
+                    metric_suite.metrics.keys(),
                 ):
                     continue
 
@@ -452,7 +460,11 @@ class VersaScorer:
                     gt_wav = wav_normalize(gt_wav)
 
                     if not self._validate_audio(
-                        gt_wav, gt_sr, key, "ground truth", metric_suite.metrics.keys(),
+                        gt_wav,
+                        gt_sr,
+                        key,
+                        "ground truth",
+                        metric_suite.metrics.keys(),
                     ):
                         continue
 
@@ -584,7 +596,10 @@ class VersaScorer:
                 continue
 
             metric_suite = self.load_metrics(
-                [config], use_gt=use_gt, use_gt_text=use_gt_text, use_gpu=use_gpu,
+                [config],
+                use_gt=use_gt,
+                use_gt_text=use_gt_text,
+                use_gpu=use_gpu,
             )
             metric_suite = MetricSuite(
                 {

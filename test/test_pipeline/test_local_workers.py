@@ -83,7 +83,8 @@ def test_parallel_resume_skips_existing_key_and_writes_input_order(tmp_path):
     completed_key = keys[-1]
     output_file = tmp_path / "scores.jsonl"
     output_file.write_text(
-        json.dumps({"key": completed_key, "constant": 3.0}) + "\n", encoding="utf-8",
+        json.dumps({"key": completed_key, "constant": 3.0}) + "\n",
+        encoding="utf-8",
     )
 
     score_info = scorer.score_utterances(
