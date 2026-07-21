@@ -85,6 +85,8 @@ class SquimMetric(BaseMetric):
                 "SQUIM is not available. Please install pesq, pystoi, and torchaudio"
             )
         self.mode = self.config.get("mode", "no_ref")
+        self.cache_dir = self.config.get("cache_dir", "versa_cache/torch")
+        torch.hub.set_dir(self.cache_dir)
         if self.mode not in {"ref", "no_ref"}:
             raise ValueError(f"Invalid SQUIM mode: {self.mode}")
         if self.mode == "ref":

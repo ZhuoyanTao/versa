@@ -48,6 +48,7 @@ external toolkits:
 
 ```bash
 pip install ".[audio,text,ml]"
+pip install ".[songeval]" # SongEval Python dependencies only
 pip install ".[external]"  # Git/toolkit-backed metrics
 pip install ".[dev]"       # tests, linting, and formatting
 ```
@@ -90,6 +91,25 @@ still run metrics that do not require that backend. FADTK is only needed for
 FAD/KID-style metrics and can be installed with `tools/install_fadtk.sh` when
 those metrics are selected.
 
+SongEval is an optional, reference-free metric for full songs. Its upstream
+toolkit predicts coherence, musicality, memorability, structural clarity, and
+vocal naturalness on a 1--5 scale. Install its Python dependencies and pinned
+upstream assets explicitly before scoring:
+
+```bash
+PYTHON=python tools/install_songeval.sh
+python versa/bin/scorer.py \
+    --score_config egs/separate_metrics/songeval.yaml \
+    --pred path/to/generated_wav.scp \
+    --output_file songeval.jsonl \
+    --io soundfile \
+    --use_gpu
+```
+
+On first use, VERSA downloads a pinned SongEval checkout into
+`versa_cache/SongEval` and MuQ into `versa_cache/huggingface`. For a fully local
+run, set `model_dir`, `muq_model`, and `offline: true` in the YAML.
+
 If NLTK downloads fail with a certificate verification error, point Python at
 the certificate bundle used by `certifi` before running the tests:
 
@@ -118,6 +138,22 @@ python -m pytest --import-mode=importlib test
 ## 🔧 Usage Examples
 
 ### Basic Usage
+
+Use `--cache_folder` to place downloads for all metrics below one shareable
+root. VERSA shares subdirectories for metrics using the same model backend
+(such as Hugging Face, Whisper, ESPnet, and Torch Hub) and isolates other
+metric-specific files. An explicit `cache_dir` in the score YAML takes
+precedence:
+
+```bash
+python versa/bin/scorer.py \
+    --score_config egs/speech_cpu.yaml \
+    --pred test/test_samples/test2 \
+    --gt test/test_samples/test1 \
+    --output_file test_result \
+    --io dir \
+    --cache_folder /shared/versa_cache
+```
 
 ```bash
 # Direct usage with file paths

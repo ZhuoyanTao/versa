@@ -9,6 +9,23 @@ from packaging.version import parse as V
 from versa.utterance_metrics.pam import PamMetric, PAM, is_pam_available
 
 
+def test_pam_metric_forwards_cache_dir(monkeypatch, tmp_path):
+    calls = {}
+
+    class DummyPam:
+        def __init__(self, **kwargs):
+            calls.update(kwargs)
+
+    monkeypatch.setenv("VERSA_HF_CACHE_DIR", "")
+    monkeypatch.setattr("versa.utterance_metrics.pam.PAM", DummyPam)
+    monkeypatch.setattr("versa.utterance_metrics.pam.PAM_AVAILABLE", True)
+
+    metric = PamMetric({"cache_dir": str(tmp_path), "use_gpu": False})
+
+    assert metric.cache_dir == str(tmp_path)
+    assert calls["cache_dir"] == str(tmp_path)
+
+
 # -------------------------------
 # Helper: Generate a fixed WAV file
 # -------------------------------

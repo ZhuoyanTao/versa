@@ -11,7 +11,9 @@ import soundfile as sf
 from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
 
 
-def arecho_model_setup(model_tag="default", use_gpu=False):
+def arecho_model_setup(
+    model_tag="default", use_gpu=False, cache_dir="versa_cache/espnet_model_zoo"
+):
     """
     Setup ARECHO model for inference.
 
@@ -54,8 +56,14 @@ def arecho_model_setup(model_tag="default", use_gpu=False):
     # Set device
     device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
 
-    # Load the model
-    model = UniversaInference.from_pretrained(model_name, device=device)
+    try:
+        from espnet_model_zoo.downloader import ModelDownloader
+    except ImportError:
+        raise ImportError(
+            "arecho requires espnet_model_zoo. Please install it and retry"
+        )
+    model_kwargs = ModelDownloader(cachedir=cache_dir).download_and_unpack(model_name)
+    model = UniversaInference(device=device, **model_kwargs)
 
     return model
 
@@ -152,9 +160,11 @@ class ArechoMetric(BaseMetric):
     def _setup(self):
         self.model_tag = self.config.get("model_tag", "default")
         self.use_gpu = self.config.get("use_gpu", False)
+        self.cache_dir = self.config.get("cache_dir", "versa_cache/espnet_model_zoo")
         self.model = arecho_model_setup(
             model_tag=self.model_tag,
             use_gpu=self.use_gpu,
+            cache_dir=self.cache_dir,
         )
 
     def compute(self, predictions, references=None, metadata=None):

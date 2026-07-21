@@ -417,7 +417,7 @@ def test_new_wer_metric_classes_use_cached_text(
     monkeypatch.setattr(f"{module_name}.{metric_name}", dummy_metric)
 
     pred, _ = _audio_pair()
-    metric = class_name({"model_tag": "tiny-test"})
+    metric = class_name({"model_tag": "tiny-test", "cache_dir": "shared-cache"})
     scores = metric.compute(
         pred,
         metadata={
@@ -429,6 +429,7 @@ def test_new_wer_metric_classes_use_cached_text(
 
     assert scores[hyp_key] == "cached hello"
     assert calls["setup"]["model_tag"] == "tiny-test"
+    assert calls["setup"]["cache_dir"] == "shared-cache"
     assert calls["ref_text"] == "hello"
     assert calls["fs"] == 22050
     assert calls["cache_pred_text"] == "cached hello"
@@ -837,9 +838,13 @@ def test_universa_missing_dependency(monkeypatch):
 def test_qwen2_audio_metric_class_returns_existing_key(monkeypatch):
     calls = {}
 
+    def dummy_setup(**kwargs):
+        calls["setup"] = kwargs
+        return {"model": "dummy"}
+
     monkeypatch.setattr(
         "versa.utterance_metrics.qwen2_audio.qwen2_model_setup",
-        lambda **kwargs: {"model": "dummy"},
+        dummy_setup,
     )
 
     def dummy_base_metric(
@@ -857,13 +862,16 @@ def test_qwen2_audio_metric_class_returns_existing_key(monkeypatch):
 
     pred, _ = _audio_pair()
     metric_class = QWEN2_AUDIO_METRIC_CLASSES["speaker_age"]
-    metric = metric_class({"prompt": "Age?", "max_length": 77})
+    metric = metric_class(
+        {"prompt": "Age?", "max_length": 77, "cache_dir": "shared-hf"}
+    )
     scores = metric.compute(pred, metadata={"sample_rate": 22050})
 
     assert scores == {"qwen_speaker_age": "young adult"}
     assert calls["fs"] == 22050
     assert calls["custom_prompt"] == "Age?"
     assert calls["max_length"] == 77
+    assert calls["setup"]["cache_dir"] == "shared-hf"
 
 
 def test_register_qwen2_audio_metric():
@@ -880,9 +888,13 @@ def test_register_qwen2_audio_metric():
 def test_qwen_omni_metric_class_returns_existing_key(monkeypatch):
     calls = {}
 
+    def dummy_setup(**kwargs):
+        calls["setup"] = kwargs
+        return {"model": "dummy"}
+
     monkeypatch.setattr(
         "versa.utterance_metrics.qwen_omni.qwen_omni_model_setup",
-        lambda **kwargs: {"model": "dummy"},
+        dummy_setup,
     )
 
     def dummy_base_metric(
@@ -900,13 +912,16 @@ def test_qwen_omni_metric_class_returns_existing_key(monkeypatch):
 
     pred, _ = _audio_pair()
     metric_class = QWEN_OMNI_METRIC_CLASSES["speech_emotion"]
-    metric = metric_class({"prompt": "Emotion?", "max_length": 88})
+    metric = metric_class(
+        {"prompt": "Emotion?", "max_length": 88, "cache_dir": "shared-hf"}
+    )
     scores = metric.compute(pred, metadata={"sample_rate": 22050})
 
     assert scores == {"qwen_omni_speech_emotion": "happy"}
     assert calls["fs"] == 22050
     assert calls["custom_prompt"] == "Emotion?"
     assert calls["max_length"] == 88
+    assert calls["setup"]["cache_dir"] == "shared-hf"
 
 
 def test_register_qwen_omni_metric():

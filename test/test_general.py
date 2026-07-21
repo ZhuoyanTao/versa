@@ -5,11 +5,83 @@ import yaml
 import logging
 
 from versa.scorer_shared import (
+    configure_metric_cache_dirs,
+    configure_shared_cache_environment,
     find_files,
     list_scoring,
     load_score_modules,
     load_summary,
 )
+
+
+def test_configure_metric_cache_dirs_uses_shared_root_and_preserves_overrides(
+    tmp_path,
+):
+    configs = [
+        {"name": "SongEval"},
+        {"name": "qwen2_audio_speaker_age"},
+        {"name": "qwen2_audio_speaker_gender"},
+        {"name": "speaking_rate"},
+        {"name": "whisper_wer", "cache_dir": "/existing/shared-whisper"},
+    ]
+
+    configured = configure_metric_cache_dirs(configs, tmp_path)
+
+    assert configured == [
+        {"name": "SongEval", "cache_dir": str(tmp_path / "songeval")},
+        {
+            "name": "qwen2_audio_speaker_age",
+            "cache_dir": str(tmp_path / "huggingface"),
+        },
+        {
+            "name": "qwen2_audio_speaker_gender",
+            "cache_dir": str(tmp_path / "huggingface"),
+        },
+        {"name": "speaking_rate", "cache_dir": str(tmp_path / "whisper")},
+        {"name": "whisper_wer", "cache_dir": "/existing/shared-whisper"},
+    ]
+    assert configs == [
+        {"name": "SongEval"},
+        {"name": "qwen2_audio_speaker_age"},
+        {"name": "qwen2_audio_speaker_gender"},
+        {"name": "speaking_rate"},
+        {"name": "whisper_wer", "cache_dir": "/existing/shared-whisper"},
+    ]
+
+
+def test_configure_metric_cache_dirs_without_root_returns_original_config():
+    configs = [{"name": "songeval"}]
+
+    assert configure_metric_cache_dirs(configs) is configs
+
+
+def test_configure_shared_cache_environment(monkeypatch, tmp_path):
+    for variable in (
+        "VERSA_CACHE_DIR",
+        "VERSA_HF_CACHE_DIR",
+        "HF_HOME",
+        "HF_HUB_CACHE",
+        "TRANSFORMERS_CACHE",
+        "HF_DATASETS_CACHE",
+        "TORCH_HOME",
+        "NEMO_CACHE_DIR",
+        "XDG_CACHE_HOME",
+    ):
+        monkeypatch.setenv(variable, "previous-cache-value")
+
+    cache_root = configure_shared_cache_environment(tmp_path / "shared-cache")
+
+    hf_cache = cache_root / "huggingface"
+    assert os.environ["VERSA_CACHE_DIR"] == str(cache_root)
+    assert os.environ["VERSA_HF_CACHE_DIR"] == str(hf_cache)
+    assert os.environ["HF_HOME"] == str(hf_cache)
+    assert os.environ["HF_HUB_CACHE"] == str(hf_cache)
+    assert os.environ["TRANSFORMERS_CACHE"] == str(hf_cache)
+    assert os.environ["HF_DATASETS_CACHE"] == str(hf_cache / "datasets")
+    assert os.environ["TORCH_HOME"] == str(cache_root / "torch")
+    assert os.environ["NEMO_CACHE_DIR"] == str(cache_root / "nemo")
+    assert os.environ["XDG_CACHE_HOME"] == str(cache_root)
+
 
 # The expected test values from the original code
 TEST_INFO = {

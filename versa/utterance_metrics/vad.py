@@ -19,8 +19,9 @@ def vad_model_setup(
     speech_pad_ms=30,
     trust_repo=True,
     force_reload=False,
+    cache_dir="versa_cache/torch",
 ):
-
+    torch.hub.set_dir(cache_dir)
     hub_kwargs = {
         "repo_or_dir": "snakers4/silero-vad",
         "model": "silero_vad",
@@ -79,6 +80,7 @@ class VadMetric(BaseMetric):
         self.speech_pad_ms = self.config.get("speech_pad_ms", 30)
         self.trust_repo = self.config.get("trust_repo", True)
         self.force_reload = self.config.get("force_reload", False)
+        self.cache_dir = self.config.get("cache_dir", "versa_cache/torch")
         self.model_info = vad_model_setup(
             threshold=self.threshold,
             min_speech_duration_ms=self.min_speech_duration_ms,
@@ -87,6 +89,7 @@ class VadMetric(BaseMetric):
             speech_pad_ms=self.speech_pad_ms,
             trust_repo=self.trust_repo,
             force_reload=self.force_reload,
+            cache_dir=self.cache_dir,
         )
 
     def compute(self, predictions, references=None, metadata=None):

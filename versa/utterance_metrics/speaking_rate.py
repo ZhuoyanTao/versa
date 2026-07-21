@@ -33,7 +33,11 @@ CHUNK_SIZE = 30  # seconds
 
 
 def speaking_rate_model_setup(
-    model_tag="default", beam_size=5, text_cleaner="whisper_basic", use_gpu=True
+    model_tag="default",
+    beam_size=5,
+    text_cleaner="whisper_basic",
+    use_gpu=True,
+    cache_dir="versa_cache/whisper",
 ):
     if model_tag == "default":
         model_tag = "large"
@@ -47,7 +51,7 @@ def speaking_rate_model_setup(
         raise ImportError(
             "speaking_rate requires espnet TextCleaner. Please install espnet"
         )
-    model = whisper.load_model(model_tag, device=device)
+    model = whisper.load_model(model_tag, device=device, download_root=cache_dir)
     textcleaner = TextCleaner(text_cleaner)
     wer_utils = {"model": model, "cleaner": textcleaner, "beam_size": beam_size}
     return wer_utils
@@ -97,11 +101,13 @@ class SpeakingRateMetric(BaseMetric):
         self.text_cleaner = self.config.get("text_cleaner", "whisper_basic")
         self.use_gpu = self.config.get("use_gpu", True)
         self.use_char = self.config.get("use_char", False)
+        self.cache_dir = self.config.get("cache_dir", "versa_cache/whisper")
         self.wer_utils = speaking_rate_model_setup(
             model_tag=self.model_tag,
             beam_size=self.beam_size,
             text_cleaner=self.text_cleaner,
             use_gpu=self.use_gpu,
+            cache_dir=self.cache_dir,
         )
 
     def compute(self, predictions, references=None, metadata=None):

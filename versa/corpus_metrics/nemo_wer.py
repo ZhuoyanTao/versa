@@ -32,7 +32,12 @@ except ImportError:
 TARGET_FS = 16000
 
 
-def nemo_wer_setup(model_tag="default", text_cleaner="whisper_basic", use_gpu=True):
+def nemo_wer_setup(
+    model_tag="default",
+    text_cleaner="whisper_basic",
+    use_gpu=True,
+    cache_dir="versa_cache/nemo",
+):
     if model_tag == "default":
         model_tag = "nvidia/stt_en_conformer_transducer_xlarge"
     device = "cuda" if use_gpu else "cpu"
@@ -43,6 +48,7 @@ def nemo_wer_setup(model_tag="default", text_cleaner="whisper_basic", use_gpu=Tr
     if TextCleaner is None:
         raise ImportError("nemo_wer requires espnet TextCleaner")
 
+    os.environ["NEMO_CACHE_DIR"] = str(cache_dir)
     asr_model = nemo_asr.models.EncDecRNNTBPEModel.from_pretrained(model_tag)
     asr_model = asr_model.to(device)
     textcleaner = TextCleaner(text_cleaner)
@@ -146,10 +152,12 @@ class NemoWerMetric(BaseMetric):
         self.model_tag = self.config.get("model_tag", "default")
         self.text_cleaner = self.config.get("text_cleaner", "whisper_basic")
         self.use_gpu = self.config.get("use_gpu", True)
+        self.cache_dir = self.config.get("cache_dir", "versa_cache/nemo")
         self.wer_utils = nemo_wer_setup(
             model_tag=self.model_tag,
             text_cleaner=self.text_cleaner,
             use_gpu=self.use_gpu,
+            cache_dir=self.cache_dir,
         )
 
     def compute(self, predictions, references=None, metadata=None):
