@@ -86,3 +86,38 @@ def test_hf_speaker_metric_different_signals():
     diff = speaker_metric(model, _fixed_audio(150), _fixed_audio(420), 16000)
     assert diff["spk_similarity"] < same["spk_similarity"]
     assert -1.0 <= diff["spk_similarity"] <= 1.0
+
+
+@pytest.mark.skipif(
+    not is_transformers_available(), reason="Transformers not available"
+)
+def test_speaker_metric_class_wavlm_backend():
+    from versa.utterance_metrics.speaker import SpeakerMetric
+
+    metric = SpeakerMetric({"model_tag": "microsoft/wavlm-base-sv", "use_gpu": False})
+    assert metric.backend == "huggingface"
+
+    audio = _fixed_audio(150)
+    result = metric.compute(audio, audio, metadata={"sample_rate": 16000})
+    assert result["spk_similarity"] == pytest.approx(1.0, abs=1e-4)
+
+
+@pytest.mark.skipif(
+    not is_transformers_available(), reason="Transformers not available"
+)
+def test_speaker_metric_class_requires_both_signals():
+    from versa.utterance_metrics.speaker import SpeakerMetric
+
+    metric = SpeakerMetric({"model_tag": "microsoft/wavlm-base-sv", "use_gpu": False})
+    with pytest.raises(ValueError, match="Predicted signal"):
+        metric.compute(None, _fixed_audio(150), metadata={"sample_rate": 16000})
+    with pytest.raises(ValueError, match="Reference signal"):
+        metric.compute(_fixed_audio(150), None, metadata={"sample_rate": 16000})
+
+
+def test_speaker_metadata_mentions_both_backends():
+    from versa.utterance_metrics.speaker import _speaker_metadata
+
+    metadata = _speaker_metadata()
+    assert "transformers" in metadata.dependencies
+    assert "espnet2" in metadata.dependencies

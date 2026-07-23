@@ -183,21 +183,44 @@ def speaker_metric(model, pred_x, gt_x, fs):
 
 
 class SpeakerMetric(BaseMetric):
-    """Speaker embedding cosine similarity."""
+    """Speaker embedding cosine similarity.
+
+    Supports ESPnet-SPK models (model_tag "default" or "espnet/...") and
+    HuggingFace x-vector models (any other model_tag, e.g.
+    "microsoft/wavlm-base-sv"). The backend is auto-detected from model_tag
+    and can be forced with the optional "backend" config key
+    ("espnet" or "huggingface").
+    """
 
     def _setup(self):
         self.model_tag = self.config.get("model_tag", "default")
         self.model_path = self.config.get("model_path")
         self.model_config = self.config.get("model_config")
         self.use_gpu = self.config.get("use_gpu", False)
-        self.cache_dir = self.config.get("cache_dir", "versa_cache/espnet_model_zoo")
-        self.model = speaker_model_setup(
+        self.backend = resolve_speaker_backend(
             model_tag=self.model_tag,
+            backend=self.config.get("backend"),
             model_path=self.model_path,
             model_config=self.model_config,
-            use_gpu=self.use_gpu,
-            cache_dir=self.cache_dir,
         )
+        if self.backend == "huggingface":
+            self.cache_dir = self.config.get("cache_dir")
+            self.model = hf_speaker_model_setup(
+                model_tag=self.model_tag,
+                use_gpu=self.use_gpu,
+                cache_dir=self.cache_dir,
+            )
+        else:
+            self.cache_dir = self.config.get(
+                "cache_dir", "versa_cache/espnet_model_zoo"
+            )
+            self.model = speaker_model_setup(
+                model_tag=self.model_tag,
+                model_path=self.model_path,
+                model_config=self.model_config,
+                use_gpu=self.use_gpu,
+                cache_dir=self.cache_dir,
+            )
 
     def compute(self, predictions, references=None, metadata=None):
         if predictions is None:
@@ -223,8 +246,12 @@ def _speaker_metadata():
         requires_text=False,
         gpu_compatible=True,
         auto_install=False,
-        dependencies=["espnet2", "librosa", "numpy"],
-        description="Speaker embedding cosine similarity",
+        dependencies=["espnet2", "transformers", "librosa", "numpy"],
+        description=(
+            "Speaker embedding cosine similarity "
+            "(ESPnet-SPK or HuggingFace x-vector models such as "
+            "microsoft/wavlm-base-sv)"
+        ),
         paper_reference="https://arxiv.org/abs/2401.17230",
         implementation_source="https://github.com/espnet/espnet",
     )
