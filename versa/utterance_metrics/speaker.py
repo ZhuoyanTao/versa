@@ -6,17 +6,34 @@
 import logging
 
 import numpy as np
+import torch
 
 from versa.audio_utils import resample_audio
+from versa.huggingface_cache import configure_huggingface_cache, get_hf_cache_dir
 
 try:
     from espnet2.bin.spk_inference import Speech2Embedding
 except ImportError:
     Speech2Embedding = None
 
+try:
+    from transformers import AutoFeatureExtractor, AutoModelForAudioXVector
+
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    AutoFeatureExtractor = None
+    AutoModelForAudioXVector = None
+    TRANSFORMERS_AVAILABLE = False
+
 from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
 
 logger = logging.getLogger(__name__)
+
+
+def is_transformers_available():
+    """Check whether transformers is importable for the HuggingFace backend."""
+    return TRANSFORMERS_AVAILABLE
+
 
 ESPNET_DEFAULT_SPEAKER_TAG = "espnet/voxcelebs12_rawnet3"
 SPEAKER_BACKENDS = ("espnet", "huggingface")
@@ -88,6 +105,61 @@ def speaker_model_setup(
             )
             model = Speech2Embedding(device=device, **model_kwargs)
     return model
+
+
+class HFSpeakerModel:
+    """Callable wrapper around a HuggingFace x-vector speaker model.
+
+    Mirrors the call signature of espnet's Speech2Embedding so that
+    speaker_metric can consume either backend interchangeably.
+    """
+
+    def __init__(self, model, feature_extractor, device):
+        self.model = model
+        self.feature_extractor = feature_extractor
+        self.device = device
+
+    def __call__(self, speech):
+        inputs = self.feature_extractor(
+            speech, sampling_rate=16000, return_tensors="pt"
+        )
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        return outputs.embeddings
+
+
+def hf_speaker_model_setup(
+    model_tag="microsoft/wavlm-base-sv", use_gpu=False, cache_dir=None
+):
+    """Load a HuggingFace x-vector speaker model (e.g. WavLM-base-sv).
+
+    Works with any AutoModelForAudioXVector checkpoint, including
+    microsoft/wavlm-base-sv, microsoft/unispeech-sat-base-sv, and other
+    x-vector fine-tuned speech encoders on the HuggingFace hub.
+    """
+    if not TRANSFORMERS_AVAILABLE:
+        raise ImportError(
+            "HuggingFace speaker models require transformers. "
+            "Please install it with `pip install transformers` "
+            "(or `pip install versa[ml]`) and retry."
+        )
+    if use_gpu and not torch.cuda.is_available():
+        logger.warning("use_gpu requested but CUDA is unavailable; using CPU.")
+    device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
+    resolved_cache_dir = get_hf_cache_dir(cache_dir)
+    configure_huggingface_cache(resolved_cache_dir)
+    feature_extractor = AutoFeatureExtractor.from_pretrained(
+        model_tag, cache_dir=resolved_cache_dir
+    )
+    model = (
+        AutoModelForAudioXVector.from_pretrained(
+            model_tag, cache_dir=resolved_cache_dir
+        )
+        .to(device)
+        .eval()
+    )
+    return HFSpeakerModel(model, feature_extractor, device)
 
 
 def speaker_metric(model, pred_x, gt_x, fs):

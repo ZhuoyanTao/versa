@@ -38,3 +38,51 @@ def test_resolve_backend_explicit_override():
 def test_resolve_backend_invalid_backend_raises():
     with pytest.raises(ValueError, match="backend"):
         resolve_speaker_backend(model_tag="default", backend="wavlm2000")
+
+
+from versa.utterance_metrics.speaker import is_transformers_available
+
+
+def _fixed_audio(freq, duration=1.0, sample_rate=16000):
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    envelope = 0.5 + 0.5 * np.sin(2 * np.pi * 0.5 * t)
+    return (envelope * np.sin(2 * np.pi * freq * t)).astype(np.float32)
+
+
+@pytest.mark.skipif(
+    not is_transformers_available(), reason="Transformers not available"
+)
+def test_hf_speaker_model_embedding_shape():
+    from versa.utterance_metrics.speaker import hf_speaker_model_setup
+
+    model = hf_speaker_model_setup(model_tag="microsoft/wavlm-base-sv", use_gpu=False)
+    embedding = model(_fixed_audio(150))
+    assert embedding.dim() == 2
+    assert embedding.shape[0] == 1
+    assert embedding.shape[1] > 0
+
+
+@pytest.mark.skipif(
+    not is_transformers_available(), reason="Transformers not available"
+)
+def test_hf_speaker_metric_identical_signals():
+    from versa.utterance_metrics.speaker import hf_speaker_model_setup, speaker_metric
+
+    model = hf_speaker_model_setup(model_tag="microsoft/wavlm-base-sv", use_gpu=False)
+    audio = _fixed_audio(150)
+    result = speaker_metric(model, audio, audio, 16000)
+    assert "spk_similarity" in result
+    assert result["spk_similarity"] == pytest.approx(1.0, abs=1e-4)
+
+
+@pytest.mark.skipif(
+    not is_transformers_available(), reason="Transformers not available"
+)
+def test_hf_speaker_metric_different_signals():
+    from versa.utterance_metrics.speaker import hf_speaker_model_setup, speaker_metric
+
+    model = hf_speaker_model_setup(model_tag="microsoft/wavlm-base-sv", use_gpu=False)
+    same = speaker_metric(model, _fixed_audio(150), _fixed_audio(150), 16000)
+    diff = speaker_metric(model, _fixed_audio(150), _fixed_audio(420), 16000)
+    assert diff["spk_similarity"] < same["spk_similarity"]
+    assert -1.0 <= diff["spk_similarity"] <= 1.0
