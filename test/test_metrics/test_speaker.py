@@ -121,3 +121,48 @@ def test_speaker_metadata_mentions_both_backends():
     metadata = _speaker_metadata()
     assert "transformers" in metadata.dependencies
     assert "espnet2" in metadata.dependencies
+
+
+def test_cache_namespace_speaker_espnet_default():
+    from versa.scorer_shared import configure_metric_cache_dirs
+
+    configs = configure_metric_cache_dirs(
+        [{"name": "speaker", "model_tag": "default"}], cache_folder="/tmp/vc"
+    )
+    assert configs[0]["cache_dir"].endswith("espnet_model_zoo")
+
+
+def test_cache_namespace_speaker_hf_tag():
+    from versa.scorer_shared import configure_metric_cache_dirs
+
+    configs = configure_metric_cache_dirs(
+        [{"name": "speaker", "model_tag": "microsoft/wavlm-base-sv"}],
+        cache_folder="/tmp/vc",
+    )
+    assert configs[0]["cache_dir"].endswith("huggingface")
+
+
+def test_cache_namespace_speaker_alias_hf_tag():
+    from versa.scorer_shared import configure_metric_cache_dirs
+
+    configs = configure_metric_cache_dirs(
+        [{"name": "spk_similarity", "model_tag": "microsoft/wavlm-base-sv"}],
+        cache_folder="/tmp/vc",
+    )
+    assert configs[0]["cache_dir"].endswith("huggingface")
+
+
+def test_cache_namespace_explicit_cache_dir_wins():
+    from versa.scorer_shared import configure_metric_cache_dirs
+
+    configs = configure_metric_cache_dirs(
+        [
+            {
+                "name": "speaker",
+                "model_tag": "microsoft/wavlm-base-sv",
+                "cache_dir": "/custom/cache",
+            }
+        ],
+        cache_folder="/tmp/vc",
+    )
+    assert configs[0]["cache_dir"] == "/custom/cache"

@@ -124,9 +124,20 @@ def load_score_modules(
     )
 
 
-def _metric_cache_namespace(metric_name):
+def _metric_cache_namespace(metric_name, metric_config=None):
     """Return a collision-safe shared namespace for a registered metric."""
     name = str(metric_name).lower()
+    if name in {"speaker", "spk_similarity", "speaker_similarity"}:
+        from versa.utterance_metrics.speaker import resolve_speaker_backend
+
+        config = metric_config or {}
+        backend = resolve_speaker_backend(
+            model_tag=config.get("model_tag", "default"),
+            backend=config.get("backend"),
+            model_path=config.get("model_path"),
+            model_config=config.get("model_config"),
+        )
+        return "huggingface" if backend == "huggingface" else "espnet_model_zoo"
     if name.startswith(("qwen2_audio_", "qwen_omni_")) or name in {
         "hubert_wer",
         "pam",
@@ -140,7 +151,6 @@ def _metric_cache_namespace(metric_name):
         "owsm_lid",
         "owsm_wer",
         "se_snr",
-        "speaker",
         "universa",
     }:
         return "espnet_model_zoo"
@@ -173,7 +183,7 @@ def configure_metric_cache_dirs(score_config, cache_folder=None):
             **config,
             "cache_dir": config.get(
                 "cache_dir",
-                str(cache_root / _metric_cache_namespace(config["name"])),
+                str(cache_root / _metric_cache_namespace(config["name"], config)),
             ),
         }
         for config in score_config
