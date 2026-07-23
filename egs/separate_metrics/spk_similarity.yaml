@@ -1,6 +1,10 @@
 # speaker related metrics
 # -- spk_similarity: speaker cosine similarity
-#                    model tag can be any ESPnet-SPK huggingface repo at 
-#                    https://huggingface.co/espnet
+#                    model tag can be:
+#                    - any ESPnet-SPK huggingface repo at
+#                      https://huggingface.co/espnet (default backend)
+#                    - any HuggingFace x-vector speaker model such as
+#                      microsoft/wavlm-base-sv (auto-detected huggingface
+#                      backend, see spk_similarity_wavlm.yaml)
 - name: speaker
   model_tag: default

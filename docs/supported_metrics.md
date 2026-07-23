@@ -112,7 +112,7 @@ We include x mark if the metric is auto-installed in versa.
 | 7 |   | NVIDIA Conformer-Transducer X-Large Speech Recognition-based Error Rate | nemo_wer | nemo_wer |[NeMo](https://github.com/NVIDIA/NeMo) | [paper](https://arxiv.org/abs/2005.08100) |
 | 8 | x | Facebook Hubert-Large-Finetuned Speech Recognition-based Error Rate | hubert_wer | hubert_wer |[HuBERT](https://github.com/facebookresearch/fairseq/tree/main/examples/hubert) | [paper](https://arxiv.org/abs/2106.07447) |
 | 9 |   | Emotion2vec similarity (emo2vec) | emo2vec_similarity | emotion_similarity | [emo2vec](https://github.com/ftshijt/emotion2vec/tree/main) | [paper](https://arxiv.org/abs/2312.15185) |
-| 10 | x | Speaker Embedding Similarity  | speaker | spk_similarity | [espnet](https://github.com/espnet/espnet) | [paper](https://arxiv.org/abs/2401.17230) |
+| 10 | x | Speaker Embedding Similarity  | speaker | spk_similarity | [espnet](https://github.com/espnet/espnet), [transformers x-vector (e.g. WavLM)](https://huggingface.co/microsoft/wavlm-base-sv) | [paper](https://arxiv.org/abs/2401.17230) |
 | 11 |   | NOMAD: Unsupervised Learning of Perceptual Embeddings For Speech Enhancement and Non-Matching Reference Audio Quality Assessment |  nomad | nomad |[Nomad](https://github.com/shimhz/nomad/tree/main) | [paper](https://arxiv.org/abs/2309.16284) |
 | 12 |   | Contrastive Language-Audio Pretraining Score (CLAP Score) | clap_score | clap_score | [frechet-audio-distance](https://github.com/gudgud96/frechet-audio-distance) | [paper](https://arxiv.org/abs/2301.12661) |
 | 13 |   | Accompaniment Prompt Adherence (APA) | apa | apa | [Sony-audio-metrics](https://github.com/SonyCSLParis/audio-metrics) | [paper](https://arxiv.org/abs/2404.00775) |

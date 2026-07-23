@@ -1,0 +1,9 @@
+# speaker related metrics (HuggingFace x-vector backend)
+# -- spk_similarity: speaker cosine similarity with microsoft/wavlm-base-sv
+#                    any AutoModelForAudioXVector checkpoint works, e.g.
+#                    microsoft/wavlm-base-sv, microsoft/wavlm-base-plus-sv,
+#                    microsoft/unispeech-sat-base-plus-sv
+#                    the backend is auto-detected from the model tag;
+#                    add `backend: huggingface` to force it explicitly
+- name: speaker
+  model_tag: microsoft/wavlm-base-sv
