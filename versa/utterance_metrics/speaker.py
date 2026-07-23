@@ -55,8 +55,7 @@ def resolve_speaker_backend(
     Returns:
         "espnet" or "huggingface".
     """
-    if model_tag is None:
-        model_tag = "default"
+    model_tag = "default" if model_tag is None else str(model_tag)
     if backend is not None:
         if backend not in SPEAKER_BACKENDS:
             raise ValueError(

@@ -187,6 +187,10 @@ def test_resolve_backend_none_tag_is_espnet():
     assert resolve_speaker_backend(model_tag=None) == "espnet"
 
 
+def test_resolve_backend_non_string_tag_does_not_crash():
+    assert resolve_speaker_backend(model_tag=123) == "huggingface"
+
+
 def test_effective_dependencies_wavlm_excludes_espnet():
     from versa.config_validation import _effective_dependencies
     from versa.utterance_metrics.speaker import _speaker_metadata
