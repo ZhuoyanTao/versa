@@ -18,6 +18,40 @@ from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricT
 
 logger = logging.getLogger(__name__)
 
+ESPNET_DEFAULT_SPEAKER_TAG = "espnet/voxcelebs12_rawnet3"
+SPEAKER_BACKENDS = ("espnet", "huggingface")
+
+
+def resolve_speaker_backend(
+    model_tag="default", backend=None, model_path=None, model_config=None
+):
+    """Resolve which speaker-model backend a configuration refers to.
+
+    Args:
+        model_tag: Model tag from the config ("default", an ESPnet hub tag
+            such as "espnet/voxcelebs12_rawnet3", or any other HuggingFace
+            repo id such as "microsoft/wavlm-base-sv").
+        backend: Optional explicit backend override ("espnet" or "huggingface").
+        model_path: Optional local ESPnet model checkpoint path.
+        model_config: Optional local ESPnet train config path.
+
+    Returns:
+        "espnet" or "huggingface".
+    """
+    if backend is not None:
+        if backend not in SPEAKER_BACKENDS:
+            raise ValueError(
+                "Unknown speaker backend '{}'. Supported backends: {}".format(
+                    backend, SPEAKER_BACKENDS
+                )
+            )
+        return backend
+    if model_path is not None and model_config is not None:
+        return "espnet"
+    if model_tag == "default" or model_tag.startswith("espnet/"):
+        return "espnet"
+    return "huggingface"
+
 
 def speaker_model_setup(
     model_tag="default",
@@ -39,7 +73,7 @@ def speaker_model_setup(
         )
     else:
         if model_tag == "default":
-            model_tag = "espnet/voxcelebs12_rawnet3"
+            model_tag = ESPNET_DEFAULT_SPEAKER_TAG
         if cache_dir is None:
             model = Speech2Embedding.from_pretrained(model_tag=model_tag, device=device)
         else:
