@@ -153,6 +153,11 @@ def test_cache_namespace_speaker_alias_hf_tag():
 
 
 def test_cache_namespace_explicit_cache_dir_wins():
+    """Explicit cache_dir wins at the config-plumbing level.
+
+    Note: at model-load time, get_hf_cache_dir gives the VERSA_HF_CACHE_DIR
+    environment variable precedence over this per-metric cache_dir.
+    """
     from versa.scorer_shared import configure_metric_cache_dirs
 
     configs = configure_metric_cache_dirs(
@@ -166,3 +171,39 @@ def test_cache_namespace_explicit_cache_dir_wins():
         cache_folder="/tmp/vc",
     )
     assert configs[0]["cache_dir"] == "/custom/cache"
+
+
+def test_cache_namespace_backend_override():
+    from versa.scorer_shared import configure_metric_cache_dirs
+
+    configs = configure_metric_cache_dirs(
+        [{"name": "speaker", "model_tag": "default", "backend": "huggingface"}],
+        cache_folder="/tmp/vc",
+    )
+    assert configs[0]["cache_dir"].endswith("huggingface")
+
+
+def test_resolve_backend_none_tag_is_espnet():
+    assert resolve_speaker_backend(model_tag=None) == "espnet"
+
+
+def test_effective_dependencies_wavlm_excludes_espnet():
+    from versa.config_validation import _effective_dependencies
+    from versa.utterance_metrics.speaker import _speaker_metadata
+
+    deps = _effective_dependencies(
+        "speaker", _speaker_metadata(), {"model_tag": "microsoft/wavlm-base-sv"}
+    )
+    assert "espnet2" not in deps
+    assert "transformers" in deps
+
+
+def test_effective_dependencies_default_excludes_transformers():
+    from versa.config_validation import _effective_dependencies
+    from versa.utterance_metrics.speaker import _speaker_metadata
+
+    deps = _effective_dependencies(
+        "speaker", _speaker_metadata(), {"model_tag": "default"}
+    )
+    assert "transformers" not in deps
+    assert "espnet2" in deps
