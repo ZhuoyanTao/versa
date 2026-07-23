@@ -1,7 +1,14 @@
+import os
+
 import numpy as np
 import pytest
 
-from versa.utterance_metrics.speaker import resolve_speaker_backend
+from versa.utterance_metrics.speaker import (
+    is_transformers_available,
+    resolve_speaker_backend,
+)
+
+RUN_REAL_MODEL_TESTS = os.environ.get("VERSA_RUN_REAL_MODEL_TESTS") == "1"
 
 
 def test_resolve_backend_default_tag_is_espnet():
@@ -40,15 +47,17 @@ def test_resolve_backend_invalid_backend_raises():
         resolve_speaker_backend(model_tag="default", backend="wavlm2000")
 
 
-from versa.utterance_metrics.speaker import is_transformers_available
-
-
 def _fixed_audio(freq, duration=1.0, sample_rate=16000):
     t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
     envelope = 0.5 + 0.5 * np.sin(2 * np.pi * 0.5 * t)
     return (envelope * np.sin(2 * np.pi * freq * t)).astype(np.float32)
 
 
+@pytest.mark.real_model
+@pytest.mark.skipif(
+    not RUN_REAL_MODEL_TESTS,
+    reason="Set VERSA_RUN_REAL_MODEL_TESTS=1 to run real model-backed checks",
+)
 @pytest.mark.skipif(
     not is_transformers_available(), reason="Transformers not available"
 )
@@ -62,6 +71,11 @@ def test_hf_speaker_model_embedding_shape():
     assert embedding.shape[1] > 0
 
 
+@pytest.mark.real_model
+@pytest.mark.skipif(
+    not RUN_REAL_MODEL_TESTS,
+    reason="Set VERSA_RUN_REAL_MODEL_TESTS=1 to run real model-backed checks",
+)
 @pytest.mark.skipif(
     not is_transformers_available(), reason="Transformers not available"
 )
@@ -75,6 +89,11 @@ def test_hf_speaker_metric_identical_signals():
     assert result["spk_similarity"] == pytest.approx(1.0, abs=1e-4)
 
 
+@pytest.mark.real_model
+@pytest.mark.skipif(
+    not RUN_REAL_MODEL_TESTS,
+    reason="Set VERSA_RUN_REAL_MODEL_TESTS=1 to run real model-backed checks",
+)
 @pytest.mark.skipif(
     not is_transformers_available(), reason="Transformers not available"
 )
@@ -88,6 +107,11 @@ def test_hf_speaker_metric_different_signals():
     assert -1.0 <= diff["spk_similarity"] <= 1.0
 
 
+@pytest.mark.real_model
+@pytest.mark.skipif(
+    not RUN_REAL_MODEL_TESTS,
+    reason="Set VERSA_RUN_REAL_MODEL_TESTS=1 to run real model-backed checks",
+)
 @pytest.mark.skipif(
     not is_transformers_available(), reason="Transformers not available"
 )
@@ -102,6 +126,11 @@ def test_speaker_metric_class_wavlm_backend():
     assert result["spk_similarity"] == pytest.approx(1.0, abs=1e-4)
 
 
+@pytest.mark.real_model
+@pytest.mark.skipif(
+    not RUN_REAL_MODEL_TESTS,
+    reason="Set VERSA_RUN_REAL_MODEL_TESTS=1 to run real model-backed checks",
+)
 @pytest.mark.skipif(
     not is_transformers_available(), reason="Transformers not available"
 )
