@@ -20,6 +20,30 @@ _GPU_REQUIRED_PREFIXES = ("qwen2_audio_", "qwen_omni_")
 _GPU_REQUIRED_METRICS = {"audiobox_aesthetics"}
 
 
+def _effective_dependencies(metric_name, metadata, config):
+    """Return the dependencies actually required by this metric config.
+
+    The speaker metric bundles both backends in its metadata; only the
+    backend selected by the config is required at runtime.
+    """
+    name = str(metric_name).lower()
+    if name in {"speaker", "spk_similarity", "speaker_similarity"}:
+        from versa.utterance_metrics.speaker import resolve_speaker_backend
+
+        try:
+            backend = resolve_speaker_backend(
+                model_tag=config.get("model_tag", "default"),
+                backend=config.get("backend"),
+                model_path=config.get("model_path"),
+                model_config=config.get("model_config"),
+            )
+        except ValueError:
+            return list(metadata.dependencies)
+        excluded = "espnet2" if backend == "huggingface" else "transformers"
+        return [dep for dep in metadata.dependencies if dep != excluded]
+    return list(metadata.dependencies)
+
+
 @dataclass(frozen=True)
 class ScoreConfigValidationError:
     """One score configuration validation issue."""
@@ -142,7 +166,7 @@ def validate_score_config(
 
         missing_dependencies = [
             dependency
-            for dependency in metadata.dependencies
+            for dependency in _effective_dependencies(metric_name, metadata, config)
             if not _dependency_available(dependency)
         ]
         if missing_dependencies:

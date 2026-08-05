@@ -6,17 +6,69 @@
 import logging
 
 import numpy as np
+import torch
 
 from versa.audio_utils import resample_audio
+from versa.huggingface_cache import configure_huggingface_cache, get_hf_cache_dir
 
 try:
     from espnet2.bin.spk_inference import Speech2Embedding
 except ImportError:
     Speech2Embedding = None
 
+try:
+    from transformers import AutoFeatureExtractor, AutoModelForAudioXVector
+
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    AutoFeatureExtractor = None
+    AutoModelForAudioXVector = None
+    TRANSFORMERS_AVAILABLE = False
+
 from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
 
 logger = logging.getLogger(__name__)
+
+
+def is_transformers_available():
+    """Check whether transformers is importable for the HuggingFace backend."""
+    return TRANSFORMERS_AVAILABLE
+
+
+ESPNET_DEFAULT_SPEAKER_TAG = "espnet/voxcelebs12_rawnet3"
+SPEAKER_BACKENDS = ("espnet", "huggingface")
+
+
+def resolve_speaker_backend(
+    model_tag="default", backend=None, model_path=None, model_config=None
+):
+    """Resolve which speaker-model backend a configuration refers to.
+
+    Args:
+        model_tag: Model tag from the config ("default", an ESPnet hub tag
+            such as "espnet/voxcelebs12_rawnet3", or any other HuggingFace
+            repo id such as "microsoft/wavlm-base-sv").
+        backend: Optional explicit backend override ("espnet" or "huggingface").
+        model_path: Optional local ESPnet model checkpoint path.
+        model_config: Optional local ESPnet train config path.
+
+    Returns:
+        "espnet" or "huggingface".
+    """
+    model_tag = "default" if model_tag is None else str(model_tag)
+    if backend is not None:
+        if backend not in SPEAKER_BACKENDS:
+            raise ValueError(
+                "Unknown speaker backend '{}'. Supported backends: {}".format(
+                    backend, SPEAKER_BACKENDS
+                )
+            )
+        return backend
+    if model_path is not None and model_config is not None:
+        return "espnet"
+    if model_tag == "default" or model_tag.startswith("espnet/"):
+        return "espnet"
+    return "huggingface"
 
 
 def speaker_model_setup(
@@ -39,7 +91,7 @@ def speaker_model_setup(
         )
     else:
         if model_tag == "default":
-            model_tag = "espnet/voxcelebs12_rawnet3"
+            model_tag = ESPNET_DEFAULT_SPEAKER_TAG
         if cache_dir is None:
             model = Speech2Embedding.from_pretrained(model_tag=model_tag, device=device)
         else:
@@ -54,6 +106,61 @@ def speaker_model_setup(
             )
             model = Speech2Embedding(device=device, **model_kwargs)
     return model
+
+
+class HFSpeakerModel:
+    """Callable wrapper around a HuggingFace x-vector speaker model.
+
+    Mirrors the call signature of espnet's Speech2Embedding so that
+    speaker_metric can consume either backend interchangeably.
+    """
+
+    def __init__(self, model, feature_extractor, device):
+        self.model = model
+        self.feature_extractor = feature_extractor
+        self.device = device
+
+    def __call__(self, speech):
+        inputs = self.feature_extractor(
+            speech, sampling_rate=16000, return_tensors="pt"
+        )
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        return outputs.embeddings
+
+
+def hf_speaker_model_setup(
+    model_tag="microsoft/wavlm-base-sv", use_gpu=False, cache_dir=None
+):
+    """Load a HuggingFace x-vector speaker model (e.g. WavLM-base-sv).
+
+    Works with any AutoModelForAudioXVector checkpoint, including
+    microsoft/wavlm-base-sv, microsoft/unispeech-sat-base-sv, and other
+    x-vector fine-tuned speech encoders on the HuggingFace hub.
+    """
+    if not TRANSFORMERS_AVAILABLE:
+        raise ImportError(
+            "HuggingFace speaker models require transformers. "
+            "Please install it with `pip install transformers` "
+            "(or `pip install versa[ml]`) and retry."
+        )
+    if use_gpu and not torch.cuda.is_available():
+        logger.warning("use_gpu requested but CUDA is unavailable; using CPU.")
+    device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
+    resolved_cache_dir = get_hf_cache_dir(cache_dir)
+    configure_huggingface_cache(resolved_cache_dir)
+    feature_extractor = AutoFeatureExtractor.from_pretrained(
+        model_tag, cache_dir=resolved_cache_dir
+    )
+    model = (
+        AutoModelForAudioXVector.from_pretrained(
+            model_tag, cache_dir=resolved_cache_dir
+        )
+        .to(device)
+        .eval()
+    )
+    return HFSpeakerModel(model, feature_extractor, device)
 
 
 def speaker_metric(model, pred_x, gt_x, fs):
@@ -77,21 +184,44 @@ def speaker_metric(model, pred_x, gt_x, fs):
 
 
 class SpeakerMetric(BaseMetric):
-    """Speaker embedding cosine similarity."""
+    """Speaker embedding cosine similarity.
+
+    Supports ESPnet-SPK models (model_tag "default" or "espnet/...") and
+    HuggingFace x-vector models (any other model_tag, e.g.
+    "microsoft/wavlm-base-sv"). The backend is auto-detected from model_tag
+    and can be forced with the optional "backend" config key
+    ("espnet" or "huggingface").
+    """
 
     def _setup(self):
         self.model_tag = self.config.get("model_tag", "default")
         self.model_path = self.config.get("model_path")
         self.model_config = self.config.get("model_config")
         self.use_gpu = self.config.get("use_gpu", False)
-        self.cache_dir = self.config.get("cache_dir", "versa_cache/espnet_model_zoo")
-        self.model = speaker_model_setup(
+        self.backend = resolve_speaker_backend(
             model_tag=self.model_tag,
+            backend=self.config.get("backend"),
             model_path=self.model_path,
             model_config=self.model_config,
-            use_gpu=self.use_gpu,
-            cache_dir=self.cache_dir,
         )
+        if self.backend == "huggingface":
+            self.cache_dir = self.config.get("cache_dir")
+            self.model = hf_speaker_model_setup(
+                model_tag=self.model_tag,
+                use_gpu=self.use_gpu,
+                cache_dir=self.cache_dir,
+            )
+        else:
+            self.cache_dir = self.config.get(
+                "cache_dir", "versa_cache/espnet_model_zoo"
+            )
+            self.model = speaker_model_setup(
+                model_tag=self.model_tag,
+                model_path=self.model_path,
+                model_config=self.model_config,
+                use_gpu=self.use_gpu,
+                cache_dir=self.cache_dir,
+            )
 
     def compute(self, predictions, references=None, metadata=None):
         if predictions is None:
@@ -117,8 +247,12 @@ def _speaker_metadata():
         requires_text=False,
         gpu_compatible=True,
         auto_install=False,
-        dependencies=["espnet2", "librosa", "numpy"],
-        description="Speaker embedding cosine similarity",
+        dependencies=["espnet2", "transformers", "librosa", "numpy"],
+        description=(
+            "Speaker embedding cosine similarity "
+            "(ESPnet-SPK or HuggingFace x-vector models such as "
+            "microsoft/wavlm-base-sv)"
+        ),
         paper_reference="https://arxiv.org/abs/2401.17230",
         implementation_source="https://github.com/espnet/espnet",
     )
