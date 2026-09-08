@@ -38,6 +38,7 @@ Every metric registration should include a `MetricMetadata` entry with:
   `DISTRIBUTIONAL`
 - `MetricType`: commonly `FLOAT` for one score or `DICT` for grouped outputs
 - whether the metric requires reference audio or reference text
+- whether it requires explicitly ordered multi-source inputs
 - whether it is GPU compatible
 - whether it is installed automatically by the base package
 - dependency import names

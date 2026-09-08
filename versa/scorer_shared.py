@@ -314,6 +314,41 @@ def _write_jsonl_score(file_handle, utt_score: Dict[str, Any]) -> None:
     file_handle.flush()
 
 
+def _validate_multi_source_file_sets(gen_source_files, gt_source_files):
+    """Validate ordered source mappings and return stable mixture key order."""
+    if len(gen_source_files) < 2 or len(gt_source_files) < 2:
+        raise ValueError(
+            "Multi-source scoring requires at least two generated and two "
+            "reference source mappings"
+        )
+    if len(gen_source_files) != len(gt_source_files):
+        raise ValueError(
+            "Generated and reference source mapping counts must match; received "
+            f"{len(gen_source_files)} and {len(gt_source_files)}"
+        )
+
+    keys = list(gen_source_files[0])
+    if not keys:
+        raise ValueError("Multi-source scoring received no mixture keys")
+    expected = set(keys)
+    mappings = [
+        *(f"generated source {index}" for index in range(len(gen_source_files))),
+        *(f"reference source {index}" for index in range(len(gt_source_files))),
+    ]
+    for label, source_files in zip(mappings, [*gen_source_files, *gt_source_files]):
+        actual = set(source_files)
+        if actual != expected:
+            missing = sorted(expected - actual)
+            extra = sorted(actual - expected)
+            details = []
+            if missing:
+                details.append("missing keys: " + ", ".join(missing[:5]))
+            if extra:
+                details.append("unexpected keys: " + ", ".join(extra[:5]))
+            raise ValueError(f"{label} does not match source 0 ({'; '.join(details)})")
+    return keys
+
+
 def _release_metric_resources() -> None:
     """Best-effort cleanup after unloading model-backed metrics."""
     gc.collect()
@@ -585,6 +620,109 @@ class VersaScorer:
 
         self.logger.info(f"Scoring completed. Results saved to {output_file}")
         return score_info
+
+    def score_multi_source_utterances(
+        self,
+        gen_source_files: List[Dict[str, Any]],
+        metric_suite: MetricSuite,
+        gt_source_files: List[Dict[str, Any]],
+        output_file: Optional[str] = None,
+        io: str = "soundfile",
+        resume: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Score explicitly ordered source pairs for each mixture.
+
+        Each item in ``gen_source_files`` and ``gt_source_files`` is one
+        source-specific SCP mapping. List order defines the source assignment.
+        This path is intentionally separate from single-utterance scoring so a
+        metric such as MAPSS cannot silently infer or permute source pairs.
+        """
+
+        keys = _validate_multi_source_file_sets(gen_source_files, gt_source_files)
+        if not metric_suite.metrics:
+            raise ValueError("No multi-source scoring function is available")
+        if any(
+            not metric.get_metadata().requires_multiple_sources
+            for metric in metric_suite.metrics.values()
+        ):
+            raise ValueError(
+                "Multi-source scoring only accepts metrics declared with "
+                "requires_multiple_sources=True"
+            )
+
+        existing_scores = _load_existing_jsonl_scores(output_file) if resume else {}
+        completed_keys = set(existing_scores).intersection(keys)
+        score_by_key = {
+            key: existing_scores[key] for key in keys if key in existing_scores
+        }
+
+        file_handle = None
+        if output_file:
+            mode = "a" if resume else "w"
+            if resume:
+                _ensure_append_starts_on_new_line(output_file)
+            file_handle = open(output_file, mode, encoding="utf-8")
+
+        try:
+            for key in tqdm(keys):
+                if key in completed_keys:
+                    continue
+
+                predictions = []
+                references = []
+                valid = True
+                for source_index, source_files in enumerate(gen_source_files):
+                    sr, waveform = load_audio(source_files[key], io)
+                    waveform = wav_normalize(waveform)
+                    if not self._validate_audio(
+                        waveform,
+                        sr,
+                        key,
+                        f"generated source {source_index}",
+                        metric_suite.metrics.keys(),
+                    ):
+                        valid = False
+                        break
+                    predictions.append(resample_audio(waveform, sr, 16000))
+                if not valid:
+                    continue
+
+                for source_index, source_files in enumerate(gt_source_files):
+                    sr, waveform = load_audio(source_files[key], io)
+                    waveform = wav_normalize(waveform)
+                    if not self._validate_audio(
+                        waveform,
+                        sr,
+                        key,
+                        f"reference source {source_index}",
+                        metric_suite.metrics.keys(),
+                    ):
+                        valid = False
+                        break
+                    references.append(resample_audio(waveform, sr, 16000))
+                if not valid:
+                    continue
+
+                metadata = {
+                    "key": key,
+                    "sample_rate": 16000,
+                }
+                utt_score = {"key": key}
+                scores = metric_suite.compute_all(predictions, references, metadata)
+                for metric_name, metric_results in scores.items():
+                    if isinstance(metric_results, dict):
+                        utt_score.update(metric_results)
+                    else:
+                        utt_score[metric_name] = metric_results
+
+                score_by_key[key] = utt_score
+                if file_handle:
+                    _write_jsonl_score(file_handle, utt_score)
+        finally:
+            if file_handle:
+                file_handle.close()
+
+        return [score_by_key[key] for key in keys if key in score_by_key]
 
     def _score_utterances_parallel(
         self,

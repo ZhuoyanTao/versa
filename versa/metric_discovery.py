@@ -200,6 +200,7 @@ def describe_metric(registry: MetricRegistry, metric_name: str) -> str:
         f"category: {metadata.category.value}",
         f"type: {metadata.metric_type.value}",
         f"requires_reference: {str(metadata.requires_reference).lower()}",
+        "requires_multiple_sources: " + str(metadata.requires_multiple_sources).lower(),
         f"requires_text: {str(metadata.requires_text).lower()}",
         f"gpu_compatible: {str(metadata.gpu_compatible).lower()}",
         f"auto_install: {str(metadata.auto_install).lower()}",
@@ -550,6 +551,7 @@ def _metadata_from_call(node: ast.AST) -> Optional[Any]:
         "description",
         "paper_reference",
         "implementation_source",
+        "requires_multiple_sources",
     ]
     for field, value in zip(positional_fields, node.args):
         values[field] = _literal_metric_value(value)

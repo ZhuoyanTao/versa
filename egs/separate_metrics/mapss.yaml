@@ -1,0 +1,14 @@
+# MAPSS requires ordered estimates and references for at least two sources.
+# Install its optional backend with: PYTHON=python tools/install_mapss.sh
+- name: mapss
+  source_names:
+    - source_1
+    - source_2
+  model: wav2vec2
+  layer: 2
+  alpha: 1.0
+  add_ci: true
+  seed: 42
+  length_policy: error
+  # Frame-level PS, PM, and confidence tables are retained below this directory.
+  cache_dir: versa_cache/mapss

@@ -110,6 +110,28 @@ On first use, VERSA downloads a pinned SongEval checkout into
 `versa_cache/SongEval` and MuQ into `versa_cache/huggingface`. For a fully local
 run, set `model_dir`, `muq_model`, and `offline: true` in the YAML.
 
+MAPSS is an optional multi-source metric for source-separation systems. Its
+backend supports Python 3.10--3.12 and constrains `transformers<4.53`, so install
+it in a compatible environment instead of adding it to the VERSA base install:
+
+```bash
+PYTHON=python tools/install_mapss.sh
+versa-score \
+    --score_config egs/separate_metrics/mapss.yaml \
+    --pred_sources estimates/source1.scp estimates/source2.scp \
+    --gt_sources references/source1.scp references/source2.scp \
+    --output_file mapss.jsonl \
+    --io soundfile \
+    --use_gpu
+```
+
+The SCP lists are positional: predicted source *i* must estimate reference
+source *i*, and every list must contain the same mixture keys. VERSA writes the
+diagnostic per-source means to JSONL and retains MAPSS's frame-level PS, PM, and
+confidence tables under `versa_cache/mapss/results`. The frame-level outputs
+should be retained for scientific reporting; the PS convenience mean is not the
+paper's formal utterance-level pooling protocol.
+
 If NLTK downloads fail with a certificate verification error, point Python at
 the certificate bundle used by `certifi` before running the tests:
 

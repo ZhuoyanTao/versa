@@ -221,6 +221,11 @@ METRIC_MODULES = (
         "Please install SongEval dependencies following tools/install_songeval.sh",
     ),
     MetricModuleSpec(
+        "versa.utterance_metrics.mapss",
+        ("MapssMetric", "register_mapss_metric"),
+        "Please install MAPSS following tools/install_mapss.sh",
+    ),
+    MetricModuleSpec(
         "versa.utterance_metrics.vad",
         ("VadMetric", "register_vad_metric"),
     ),
