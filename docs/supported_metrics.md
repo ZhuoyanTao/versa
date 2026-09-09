@@ -97,6 +97,17 @@ We include x mark if the metric is auto-installed in versa.
 | 27 | x | Chroma-related Alignment | chroma_alignment | chroma_{stft,cqt,cens}_{cosine, euclidean}_dtw{"", _log, _raw} | - | - |
 | 28 | x | Deep Perceptual Audio Metric (DPAM) | dpam | dpam_distance | [PerceptualAudio_Pytorch](https://github.com/adrienchaton/PerceptualAudio_pytorch)  | [paper](https://arxiv.org/abs/2001.04460) |
 | 29 | x | Contrastive learning-based Deep Perceptual Audio Metric (CDPAM) | cdpam | cdpam_distance | [PerceptualAudio](https://github.com/pranaymanocha/PerceptualAudio/cdpam) | [paper](https://arxiv.org/abs/2102.05109) |
+| 30 |  | MAPSS Perceptual Separation and Perceptual Match | mapss | mapss_{ps,pm}_{source}; frame-level tables in the MAPSS result directory | [MAPSS](https://github.com/Amir-Ivry/MAPSS-measures) | [paper](https://arxiv.org/abs/2509.09212) |
+
+MAPSS uses a dedicated ordered multi-source input path because each estimate
+must remain paired with its corresponding reference and at least two pairs are
+required. Install the pinned optional backend with `tools/install_mapss.sh`,
+then pass one source-specific SCP per position through `--pred_sources` and
+`--gt_sources`; see `egs/separate_metrics/mapss.yaml`. MAPSS 1.1.2 supports
+Python 3.10--3.12 and requires `transformers<4.53`, so it is intentionally not
+part of the VERSA base installation. Its first use downloads the selected
+pretrained backbone. VERSA retains the frame-level tables because the diagnostic
+PS mean is not the paper's formal utterance-level aggregation.
 
 
 ### Non-match Metrics

@@ -43,6 +43,7 @@ class MetricMetadata:
     description: str
     paper_reference: Optional[str] = None
     implementation_source: Optional[str] = None
+    requires_multiple_sources: bool = False
 
 
 class MetricRegistry:

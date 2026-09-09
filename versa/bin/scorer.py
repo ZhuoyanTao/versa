@@ -37,6 +37,25 @@ def get_parser() -> argparse.Namespace:
         help="Wav.scp for ground truth waveforms.",
     )
     parser.add_argument(
+        "--pred_sources",
+        "--pred-sources",
+        nargs="+",
+        default=None,
+        metavar="SCP",
+        help=(
+            "Ordered source-specific wav.scp files for multi-source metrics. "
+            "Use with --gt_sources; source position defines the assignment."
+        ),
+    )
+    parser.add_argument(
+        "--gt_sources",
+        "--gt-sources",
+        nargs="+",
+        default=None,
+        metavar="SCP",
+        help="Ordered reference source wav.scp files for multi-source metrics.",
+    )
+    parser.add_argument(
         "--text", type=str, default=None, help="Path of ground truth transcription."
     )
     parser.add_argument(
@@ -186,6 +205,22 @@ def get_parser() -> argparse.Namespace:
     return parser
 
 
+def _text_required_multi_source_metrics(score_config, registry):
+    """Return configured multi-source metrics needing unsupported text input."""
+    if not isinstance(score_config, list):
+        return []
+
+    unsupported = []
+    for config in score_config:
+        if not isinstance(config, dict):
+            continue
+        metric_name = config.get("name")
+        metadata = registry.get_metadata(metric_name)
+        if metadata and metadata.requires_multiple_sources and metadata.requires_text:
+            unsupported.append(metric_name)
+    return unsupported
+
+
 def main():
     parser = get_parser()
     args = parser.parse_args()
@@ -258,20 +293,116 @@ def main():
     configure_shared_cache_environment(args.cache_folder)
     score_config = configure_metric_cache_dirs(score_config, args.cache_folder)
 
+    multi_source_mode = args.pred_sources is not None or args.gt_sources is not None
+    if multi_source_mode:
+        if args.pred_sources is None or args.gt_sources is None:
+            parser.error("--pred_sources and --gt_sources must be provided together")
+        if args.pred is not None or args.gt is not None:
+            parser.error(
+                "--pred_sources/--gt_sources cannot be combined with --pred/--gt"
+            )
+        if args.no_match:
+            parser.error("--no_match is not valid for multi-source scoring")
+        if args.num_workers != 1:
+            parser.error("multi-source scoring currently requires --num_workers 1")
+        if args.scoring_mode != "utterance":
+            parser.error("multi-source scoring currently uses --scoring_mode utterance")
+    elif args.pred is None:
+        parser.error("--pred is required unless --pred_sources is used")
+
     # Validate before any scoring or model setup begins.
     scorer = VersaScorer()
+    if multi_source_mode:
+        text_required_metrics = _text_required_multi_source_metrics(
+            score_config, scorer.registry
+        )
+        if text_required_metrics:
+            parser.error(
+                "multi-source scoring does not yet support metrics requiring "
+                "reference text: " + ", ".join(text_required_metrics)
+            )
+
     try:
         from versa.config_validation import validate_score_config
 
         validate_score_config(
             score_config,
             registry=scorer.registry,
-            use_gt=(args.gt is not None and args.gt != "None" and not args.no_match),
+            use_gt=(
+                args.gt_sources is not None
+                if multi_source_mode
+                else args.gt is not None and args.gt != "None" and not args.no_match
+            ),
             use_gt_text=(args.text is not None),
             use_gpu=args.use_gpu,
         )
     except ValueError as e:
         parser.error(str(e))
+
+    score_metadata = {
+        config["name"]: scorer.registry.get_metadata(config["name"])
+        for config in score_config
+    }
+    multi_source_score_config = [
+        config
+        for config in score_config
+        if score_metadata[config["name"]]
+        and score_metadata[config["name"]].requires_multiple_sources
+    ]
+
+    if multi_source_mode:
+        if len(multi_source_score_config) != len(score_config):
+            parser.error(
+                "--pred_sources/--gt_sources can only be used with metrics that "
+                "declare multi-source input"
+            )
+        if len(args.pred_sources) < 2 or len(args.gt_sources) < 2:
+            parser.error("multi-source scoring requires at least two source SCPs")
+        if len(args.pred_sources) != len(args.gt_sources):
+            parser.error(
+                "--pred_sources and --gt_sources must contain the same number of SCPs"
+            )
+
+        gen_source_files = [
+            audio_loader_setup(path, args.io) for path in args.pred_sources
+        ]
+        gt_source_files = [
+            audio_loader_setup(path, args.io) for path in args.gt_sources
+        ]
+        multi_source_metrics = scorer.load_metrics(
+            multi_source_score_config,
+            use_gt=True,
+            use_gt_text=False,
+            use_gpu=args.use_gpu,
+        )
+        if not multi_source_metrics.metrics:
+            raise ValueError("No multi-source scoring function is available")
+        score_info = scorer.score_multi_source_utterances(
+            gen_source_files,
+            multi_source_metrics,
+            gt_source_files,
+            output_file=args.output_file,
+            io=args.io,
+            resume=args.resume,
+        )
+        logging.info("Summary: %s", compute_summary(score_info))
+        if args.report:
+            if not score_info:
+                raise ValueError("--report requires at least one utterance-level score")
+            _write_report(
+                score_info,
+                args.report,
+                report_format=args.report_format,
+                group_by=args.report_group_by,
+                outlier_limit=args.report_outlier_limit,
+                registry=scorer.registry,
+            )
+        return
+
+    if multi_source_score_config:
+        parser.error(
+            "multi-source metrics require ordered --pred_sources and --gt_sources"
+        )
 
     gen_files = audio_loader_setup(args.pred, args.io)
 
@@ -305,10 +436,6 @@ def main():
     logging.info("The number of utterances = %d" % len(gen_files))
 
     # Initialize VersaScorer
-    score_metadata = {
-        config["name"]: scorer.registry.get_metadata(config["name"])
-        for config in score_config
-    }
     corpus_score_config = [
         config
         for config in score_config
