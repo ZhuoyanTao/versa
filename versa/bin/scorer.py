@@ -361,6 +361,8 @@ def main():
         )
         logging.info("Summary: %s", compute_summary(score_info))
         if args.report:
+            if not score_info:
+                raise ValueError("--report requires at least one utterance-level score")
             _write_report(
                 score_info,
                 args.report,

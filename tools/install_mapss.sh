@@ -22,10 +22,10 @@ except PackageNotFoundError:
 else:
     major_minor = tuple(int(part) for part in installed.split(".")[:2])
     if major_minor >= (4, 53):
-        print(
-            "WARNING: MAPSS 1.1.2 requires transformers<4.53 and pip may "
-            f"replace the installed transformers {installed}. Consider a "
-            "dedicated virtual environment."
+        raise SystemExit(
+            "MAPSS 1.1.2 requires transformers<4.53, but this environment has "
+            f"transformers {installed}. Refusing to modify the environment; "
+            "install MAPSS in a dedicated compatible virtual environment."
         )
 '
 

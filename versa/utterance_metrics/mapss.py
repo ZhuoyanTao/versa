@@ -70,17 +70,9 @@ class MapssMetric(BaseMetric):
         self.length_policy = self.config.get("length_policy", "error")
         self.verbose = self.config.get("verbose", False)
         self.source_names = self.config.get("source_names")
-        self.save_frame_scores = self.config.get("save_frame_scores", True)
         cache_dir = Path(self.config.get("cache_dir", "versa_cache/mapss"))
-        self.results_dir = Path(self.config.get("results_dir", cache_dir / "results"))
-
-        configured_max_gpus = self.config.get("max_gpus")
-        if configured_max_gpus is not None:
-            self.max_gpus = configured_max_gpus
-        elif self.config.get("use_gpu", False):
-            self.max_gpus = 1
-        else:
-            self.max_gpus = 0
+        self.results_dir = cache_dir / "results"
+        self.max_gpus = int(self.config.get("use_gpu", False))
 
     def compute(self, predictions, references=None, metadata=None):
         if not isinstance(predictions, (list, tuple)) or len(predictions) < 2:
@@ -114,12 +106,11 @@ class MapssMetric(BaseMetric):
         )
 
         scores = _summary_scores(result.summary)
-        if self.save_frame_scores:
-            result_dir = self.results_dir / _result_directory_name(
-                metadata.get("key", "mixture")
-            )
-            result.save(result_dir, plot=False)
-            scores["mapss_result_dir"] = str(result_dir)
+        result_dir = self.results_dir / _result_directory_name(
+            metadata.get("key", "mixture")
+        )
+        result.save(result_dir, plot=False)
+        scores["mapss_result_dir"] = str(result_dir)
         return scores
 
     def get_metadata(self):

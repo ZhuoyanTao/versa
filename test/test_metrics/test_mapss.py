@@ -91,7 +91,7 @@ def test_mapss_metric_validates_source_pairs(
     monkeypatch, predictions, references, message
 ):
     monkeypatch.setattr(mapss, "mapss_compute", lambda **kwargs: FakeResult())
-    metric = mapss.MapssMetric({"save_frame_scores": False})
+    metric = mapss.MapssMetric()
 
     with pytest.raises(ValueError, match=message):
         metric.compute(predictions, references)
@@ -100,7 +100,7 @@ def test_mapss_metric_validates_source_pairs(
 def test_mapss_setup_reports_missing_optional_dependency(monkeypatch):
     monkeypatch.setattr(mapss, "mapss_compute", None)
 
-    with pytest.raises(ImportError, match="tools/install_mapss.sh"):
+    with pytest.raises(ImportError, match=r"tools/install_mapss\.sh"):
         mapss.MapssMetric()
 
 
