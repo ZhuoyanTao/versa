@@ -172,3 +172,16 @@ def test_permutation_three_source_cyclic_shift():
         assert out[f"sdr_src{i}"] > 20.0
     # and without the flag the same input scores as a failure
     assert signal_metric(est, refs)["si_snr"] < 0.0
+
+
+@pytest.mark.parametrize("compute_permutation", [False, True])
+@pytest.mark.parametrize("n_est, n_ref", [(2, 3), (3, 2), (1, 2), (2, 1)])
+def test_mismatched_source_count_raises_clearly(compute_permutation, n_est, n_ref):
+    """The contract is enforced before either backend sees the arrays, so the
+    error is the same clear ValueError with or without permutation instead
+    of an einsum failure from fast_bss_eval."""
+    rng = np.random.RandomState(0)
+    est = rng.random((n_est, 8000))
+    ref = rng.random((n_ref, 8000))
+    with pytest.raises(ValueError, match=rf"{n_est} estimated and {n_ref} reference"):
+        signal_metric(est, ref, compute_permutation=compute_permutation)

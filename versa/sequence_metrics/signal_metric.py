@@ -66,7 +66,7 @@ def signal_metric(pred_x, gt_x, compute_permutation=False):
     Args:
         pred_x: estimated sources, (channel, samples) or (samples,).
         gt_x: reference sources, same shape. The number of sources must match
-            the estimate's; bss_eval raises otherwise.
+            the estimate's; a ValueError says so otherwise, on both paths.
         compute_permutation: resolve the optimal source-to-reference
             assignment before scoring. Required for any system that emits
             more than one source, where output order is arbitrary: without
@@ -82,12 +82,21 @@ def signal_metric(pred_x, gt_x, compute_permutation=False):
         pred_x = pred_x[np.newaxis, :]
     if gt_x.ndim == 1:
         gt_x = gt_x[np.newaxis, :]
+    if pred_x.shape[0] != gt_x.shape[0]:
+        # Enforce the contract here, on both paths: fast_bss_eval would
+        # otherwise fail deep inside an einsum with a message that says
+        # nothing about source counts.
+        raise ValueError(
+            "signal_metric needs the same number of sources in the estimate "
+            f"and the reference, got {pred_x.shape[0]} estimated and "
+            f"{gt_x.shape[0]} reference sources"
+        )
     if pred_x.shape[1] != gt_x.shape[1]:
         min_audio_length = min(pred_x.shape[1], gt_x.shape[1])
         pred_x = pred_x[:, :min_audio_length]
         gt_x = gt_x[:, :min_audio_length]
 
-    n_src = min(pred_x.shape[0], gt_x.shape[0])
+    n_src = pred_x.shape[0]
     do_perm = bool(compute_permutation) and n_src > 1
 
     if do_perm:
