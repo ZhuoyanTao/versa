@@ -7,27 +7,19 @@
 
 import argparse
 import logging
-import os
-import re
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-import torch
-import yaml
-from versa.definition import MetricCategory
-from versa.config_validation import validate_score_config
-from versa.scorer_shared import (
-    audio_loader_setup,
-    configure_metric_cache_dirs,
-    configure_shared_cache_environment,
-    list_scoring,
-    load_audio,
-    load_score_modules,
-    load_summary,
-    VersaScorer,
-    wav_normalize,
+from versa.bin.scoring import (
+    configure_runtime,
+    load_inputs,
+    load_score_config,
+    run_scoring,
 )
+from versa.config_validation import validate_score_config
+from versa.scorer_shared import VersaScorer
+from versa.scorer_shared import load_audio, wav_normalize
 
 
 def get_parser() -> argparse.Namespace:
@@ -295,40 +287,9 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    # In case of using `local` backend, all GPU will be visible to all process.
-    if args.use_gpu:
-        if not torch.cuda.is_available() or torch.cuda.device_count() == 0:
-            raise RuntimeError("--use_gpu was set, but no CUDA device is available")
-        gpu_rank = args.rank % torch.cuda.device_count()
-        torch.cuda.set_device(gpu_rank)
-        logging.info(f"using device: cuda:{gpu_rank}")
-
-    # logging info
-    if args.verbose > 1:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",
-        )
-    elif args.verbose > 0:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",
-        )
-    else:
-        logging.basicConfig(
-            level=logging.WARN,
-            format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",
-        )
-        logging.warning("Skip DEBUG/INFO messages")
-
-    # find reference file
+    configure_runtime(args)
     args.gt = None if args.gt == "None" else args.gt
-
-    with open(args.score_config, "r", encoding="utf-8") as f:
-        score_config = yaml.safe_load(f)
-    configure_shared_cache_environment(args.cache_folder)
-    score_config = configure_metric_cache_dirs(score_config, args.cache_folder)
-
+    score_config = load_score_config(args)
     scorer = VersaScorer()
     try:
         validate_score_config(
@@ -341,38 +302,9 @@ def main():
     except ValueError as e:
         parser.error(str(e))
 
-    gen_files = audio_loader_setup(args.pred, args.io)
-
-    # find reference file
-    if args.gt is not None and not args.no_match:
-        gt_files = audio_loader_setup(args.gt, args.io)
-    else:
-        gt_files = None
-
-    # find ground truth transcription
-    if args.text is not None:
-        text_info = {}
-        with open(args.text) as f:
-            for line in f.readlines():
-                key, value = line.strip().split(maxsplit=1)
-                text_info[key] = value
-    else:
-        text_info = None
-
-    # Get and divide list
-    if len(gen_files) == 0:
-        raise FileNotFoundError("Not found any generated audio files.")
-    if (
-        gt_files is not None
-        and len(gen_files) > len(gt_files)
-        and not args.enable_chunking
-    ):
-        # (For chunking, we later truncate to min length per pair, so we don't pre-check count equality.)
-        raise ValueError(
-            "#groundtruth files are less than #generated files "
-            f"(#gen={len(gen_files)} vs. #gt={len(gt_files)}). "
-            "Please check the groundtruth directory."
-        )
+    gen_files, gt_files, text_info = load_inputs(
+        args, check_reference_count=not args.enable_chunking
+    )
 
     logging.info("The number of utterances (pre-chunk) = %d", len(gen_files))
 
@@ -384,68 +316,27 @@ def main():
     if args.enable_chunking:
         logging.info("The number of items (post-chunk) = %d", len(gen_files))
 
-    score_modules = load_score_modules(
+    # Preserve this entrypoint's corpus path selection, including chunk directories.
+    pred_for_corpus = args.pred
+    gt_for_corpus = args.gt if args.gt is not None and not args.no_match else None
+    if args.enable_chunking and chunk_tmp_dir is not None:
+        pred_for_corpus = str(chunk_tmp_dir / "pred")
+        logging.info(f"Corpus scoring over chunk directory: {pred_for_corpus}")
+        gt_for_corpus = None
+
+    has_metrics, _ = run_scoring(
+        args,
+        scorer,
         score_config,
-        use_gt=(True if gt_files is not None else False),
-        use_gt_text=(True if text_info is not None else False),
-        use_gpu=args.use_gpu,
+        gen_files,
+        gt_files,
+        text_info,
+        corpus_inputs=(pred_for_corpus, gt_for_corpus),
+        parser=parser,
+        corpus_defaults=lambda config: {"io": args.io},
+        corpus_use_gt=args.gt is not None,
     )
-
-    if len(score_modules) > 0:
-        score_info = list_scoring(
-            gen_files,
-            score_modules,
-            gt_files,
-            text_info,
-            output_file=args.output_file,
-            io=args.io,
-            resume=args.resume,
-        )
-        logging.info("Summary: %s", load_summary(score_info))
-    else:
-        logging.info("No utterance-level scoring function is provided.")
-
-    corpus_score_config = []
-    for config in score_config:
-        metadata = scorer.registry.get_metadata(config["name"])
-        if metadata is None or metadata.category != MetricCategory.DISTRIBUTIONAL:
-            continue
-        corpus_config = dict(config)
-        corpus_config.setdefault("io", args.io)
-        corpus_score_config.append(corpus_config)
-
-    corpus_score_modules = scorer.load_metrics(
-        corpus_score_config,
-        use_gt=(True if args.gt is not None else False),
-        use_gt_text=(True if text_info is not None else False),
-        use_gpu=args.use_gpu,
-    )
-    assert (
-        len(corpus_score_modules) > 0 or len(score_modules) > 0
-    ), "no scoring function is provided"
-
-    # NOTE: For corpus scoring we keep original (non-chunked) paths unless you explicitly want
-    # to aggregate over chunks. If you want corpus over chunks, pass args.pred as the CHUNK TMP dir
-    # and ensure your corpus scorer supports directory inputs.
-    if len(corpus_score_modules) > 0:
-        pred_for_corpus = args.pred
-        gt_for_corpus = args.gt if args.gt is not None and not args.no_match else None
-        if args.enable_chunking and chunk_tmp_dir is not None:
-            # Optionally switch corpus to chunk directory:
-            pred_for_corpus = str(chunk_tmp_dir / "pred")
-            logging.info(f"Corpus scoring over chunk directory: {pred_for_corpus}")
-            gt_for_corpus = None
-
-        corpus_score_info = scorer.score_corpus(
-            pred_for_corpus,
-            corpus_score_modules,
-            gt_for_corpus,
-            text_info,
-            output_file=(args.output_file + ".corpus") if args.output_file else None,
-        )
-        logging.info("Corpus Summary: %s", corpus_score_info)
-    else:
-        logging.info("No corpus-level scoring function is provided.")
+    assert has_metrics, "no scoring function is provided"
 
 
 if __name__ == "__main__":

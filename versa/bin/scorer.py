@@ -250,48 +250,16 @@ def main():
         except ValueError as e:
             parser.error(str(e))
 
-    import torch
-
-    from versa.definition import MetricCategory
-    from versa.scorer_shared import (
-        audio_loader_setup,
-        configure_metric_cache_dirs,
-        configure_shared_cache_environment,
-        VersaScorer,
-        compute_summary,
+    from versa.scorer_shared import audio_loader_setup, VersaScorer, compute_summary
+    from versa.bin.scoring import (
+        configure_runtime,
+        load_inputs,
+        load_score_config,
+        run_scoring,
     )
-    import yaml
 
-    # In case of using `local` backend, all GPU will be visible to all process.
-    if args.use_gpu:
-        if not torch.cuda.is_available() or torch.cuda.device_count() == 0:
-            raise RuntimeError("--use_gpu was set, but no CUDA device is available")
-        gpu_rank = args.rank % torch.cuda.device_count()
-        torch.cuda.set_device(gpu_rank)
-        logging.info(f"using device: cuda:{gpu_rank}")
-
-    # logging info
-    if args.verbose > 1:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",
-        )
-    elif args.verbose > 0:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",
-        )
-    else:
-        logging.basicConfig(
-            level=logging.WARN,
-            format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",
-        )
-        logging.warning("Skip DEBUG/INFO messages")
-
-    with open(args.score_config, "r", encoding="utf-8") as f:
-        score_config = yaml.safe_load(f)
-    configure_shared_cache_environment(args.cache_folder)
-    score_config = configure_metric_cache_dirs(score_config, args.cache_folder)
+    configure_runtime(args)
+    score_config = load_score_config(args)
 
     multi_source_mode = args.pred_sources is not None or args.gt_sources is not None
     if multi_source_mode:
@@ -404,135 +372,18 @@ def main():
             "multi-source metrics require ordered --pred_sources and --gt_sources"
         )
 
-    gen_files = audio_loader_setup(args.pred, args.io)
-
-    # find reference file
-    args.gt = None if args.gt == "None" else args.gt
-    if args.gt is not None and not args.no_match:
-        gt_files = audio_loader_setup(args.gt, args.io)
-    else:
-        gt_files = None
-
-    # fine ground truth transcription
-    if args.text is not None:
-        text_info = {}
-        with open(args.text) as f:
-            for line in f.readlines():
-                key, value = line.strip().split(maxsplit=1)
-                text_info[key] = value
-    else:
-        text_info = None
-
-    # Get and divide list
-    if len(gen_files) == 0:
-        raise FileNotFoundError("Not found any generated audio files.")
-    if gt_files is not None and len(gen_files) > len(gt_files):
-        raise ValueError(
-            "#groundtruth files are less than #generated files "
-            f"(#gen={len(gen_files)} vs. #gt={len(gt_files)}). "
-            "Please check the groundtruth directory."
-        )
-
-    logging.info("The number of utterances = %d" % len(gen_files))
-
-    # Initialize VersaScorer
-    corpus_score_config = [
-        config
-        for config in score_config
-        if (
-            score_metadata[config["name"]]
-            and score_metadata[config["name"]].category == MetricCategory.DISTRIBUTIONAL
-        )
-    ]
-    utterance_score_config = [
-        config
-        for config in score_config
-        if not (
-            score_metadata[config["name"]]
-            and score_metadata[config["name"]].category == MetricCategory.DISTRIBUTIONAL
-        )
-    ]
-
-    if args.num_workers > 1 and args.scoring_mode == "metric":
-        parser.error(
-            "--num_workers > 1 is only supported with --scoring_mode utterance"
-        )
-    if args.num_workers > 1 and len(utterance_score_config) == 0:
-        parser.error("--num_workers > 1 requires at least one utterance-level metric")
-
-    score_info = []
-    if args.scoring_mode == "metric":
-        score_info = scorer.score_utterances_by_metric(
-            gen_files,
-            utterance_score_config,
-            gt_files,
-            text_info,
-            output_file=args.output_file,
-            io=args.io,
-            resume=args.resume,
-            use_gpu=args.use_gpu,
-        )
-        logging.info("Summary: {}".format(compute_summary(score_info)))
-        utterance_metric_count = int(
-            any(any(key != "key" for key in score) for score in score_info)
-        )
-    else:
-        # Load utterance-level metrics
-        utterance_metrics = scorer.load_metrics(
-            utterance_score_config,
-            use_gt=(True if gt_files is not None else False),
-            use_gt_text=(True if text_info is not None else False),
-            use_gpu=args.use_gpu,
-        )
-
-        utterance_metric_count = len(
-            [
-                metric
-                for metric in utterance_metrics.metrics.values()
-                if metric.get_metadata().category != MetricCategory.DISTRIBUTIONAL
-            ]
-        )
-
-    # Perform utterance-level scoring
-    if args.scoring_mode == "utterance" and len(utterance_metrics.metrics) > 0:
-        score_info = scorer.score_utterances(
-            gen_files,
-            utterance_metrics,
-            gt_files,
-            text_info,
-            output_file=args.output_file,
-            io=args.io,
-            resume=args.resume,
-            num_workers=args.num_workers,
-        )
-        logging.info("Summary: {}".format(compute_summary(score_info)))
-    elif utterance_metric_count == 0:
-        logging.info("No utterance-level scoring function is provided.")
-
-    # Load corpus-level metrics (distributional metrics)
-    corpus_metrics = scorer.load_metrics(
-        corpus_score_config,
-        use_gt=(True if gt_files is not None else False),
-        use_gt_text=(True if text_info is not None else False),
-        use_gpu=args.use_gpu,
+    gen_files, gt_files, text_info = load_inputs(args)
+    logging.info("The number of utterances = %d", len(gen_files))
+    has_metrics, score_info = run_scoring(
+        args,
+        scorer,
+        score_config,
+        gen_files,
+        gt_files,
+        text_info,
+        parser=parser,
     )
-
-    # Filter for corpus-level metrics and perform corpus scoring
-    corpus_suite = corpus_metrics.filter_by_category(MetricCategory.DISTRIBUTIONAL)
-    if len(corpus_suite.metrics) > 0:
-        corpus_score_info = scorer.score_corpus(
-            gen_files,
-            corpus_suite,
-            gt_files,
-            text_info,
-            output_file=args.output_file + ".corpus" if args.output_file else None,
-        )
-        logging.info("Corpus Summary: {}".format(corpus_score_info))
-    else:
-        logging.info("No corpus-level scoring function is provided.")
-
-    # Ensure at least one scoring function is provided
-    if utterance_metric_count == 0 and len(corpus_suite.metrics) == 0:
+    if not has_metrics:
         raise ValueError("No scoring function is provided")
 
     if args.report:
