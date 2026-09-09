@@ -1,9 +1,16 @@
 import json
+import sys
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
-from versa.bin.scorer import _text_required_multi_source_metrics, get_parser
+from versa import config_validation, scorer_shared
+from versa.bin.scorer import (
+    _text_required_multi_source_metrics,
+    get_parser,
+    main as scorer_main,
+)
 from versa.definition import (
     BaseMetric,
     MetricCategory,
@@ -66,15 +73,64 @@ def test_multi_source_parser_accepts_ordered_scp_lists():
 def test_multi_source_rejects_only_metrics_that_require_text():
     metadata = OrderedSourceMetric().get_metadata()
     score_config = [{"name": "ordered_source"}]
+    registry = MetricRegistry()
+    registry.register(OrderedSourceMetric, metadata)
 
-    assert (
-        _text_required_multi_source_metrics(score_config, {"ordered_source": metadata})
-        == []
+    assert _text_required_multi_source_metrics(score_config, registry) == []
+
+    text_registry = MetricRegistry()
+    text_registry.register(OrderedSourceMetric, replace(metadata, requires_text=True))
+    assert _text_required_multi_source_metrics(score_config, text_registry) == [
+        "ordered_source"
+    ]
+
+
+def test_multi_source_cli_rejects_text_metric_before_generic_validation(
+    monkeypatch, tmp_path, capsys
+):
+    registry = MetricRegistry()
+    registry.register(
+        OrderedSourceMetric,
+        replace(OrderedSourceMetric().get_metadata(), requires_text=True),
     )
-    assert _text_required_multi_source_metrics(
-        score_config,
-        {"ordered_source": replace(metadata, requires_text=True)},
-    ) == ["ordered_source"]
+    monkeypatch.setattr(
+        scorer_shared,
+        "VersaScorer",
+        lambda: SimpleNamespace(registry=registry),
+    )
+
+    def unexpected_validation(*args, **kwargs):
+        pytest.fail("generic validation ran before multi-source text validation")
+
+    monkeypatch.setattr(
+        config_validation, "validate_score_config", unexpected_validation
+    )
+    config_path = tmp_path / "text_metric.yaml"
+    config_path.write_text("- name: ordered_source\n", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "versa-scorer",
+            "--score_config",
+            str(config_path),
+            "--pred_sources",
+            "pred-1.scp",
+            "pred-2.scp",
+            "--gt_sources",
+            "ref-1.scp",
+            "ref-2.scp",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        scorer_main()
+
+    assert error.value.code == 2
+    assert (
+        "does not yet support metrics requiring reference text"
+        in capsys.readouterr().err
+    )
 
 
 def test_multi_source_pipeline_preserves_order_and_writes_jsonl(tmp_path):
