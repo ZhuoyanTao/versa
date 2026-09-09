@@ -65,7 +65,8 @@ def signal_metric(pred_x, gt_x, compute_permutation=False):
 
     Args:
         pred_x: estimated sources, (channel, samples) or (samples,).
-        gt_x: reference sources, same shape.
+        gt_x: reference sources, same shape. The number of sources must match
+            the estimate's; bss_eval raises otherwise.
         compute_permutation: resolve the optimal source-to-reference
             assignment before scoring. Required for any system that emits
             more than one source, where output order is arbitrary: without
@@ -187,7 +188,7 @@ def register_signal_metric(registry):
     registry.register(
         SignalMetric,
         _signal_metadata(),
-        aliases=["signal", "snr_related", "signal_metric_pit"],
+        aliases=["signal", "snr_related"],
     )
 
 
