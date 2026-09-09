@@ -11,7 +11,8 @@ import numpy as np
 from omegaconf import OmegaConf
 
 from versa.audio_utils import resample_audio
-from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
+from versa.metric_metadata import _scoreq_metadata
+from versa.definition import BaseMetric
 
 logger = logging.getLogger(__name__)
 
@@ -188,32 +189,6 @@ class ScoreqRefMetric(ScoreqMetric):
     def _setup(self):
         self.config = {**self.config, "mode": self.config.get("mode", "ref")}
         super()._setup()
-
-
-def _scoreq_metadata(name, mode):
-    requires_reference = mode == "ref"
-    description = (
-        "ScoreQ reference-based speech quality assessment"
-        if requires_reference
-        else "ScoreQ reference-less speech quality assessment"
-    )
-    return MetricMetadata(
-        name=name,
-        category=(
-            MetricCategory.DEPENDENT
-            if requires_reference
-            else MetricCategory.INDEPENDENT
-        ),
-        metric_type=MetricType.FLOAT,
-        requires_reference=requires_reference,
-        requires_text=False,
-        gpu_compatible=True,
-        auto_install=False,
-        dependencies=["scoreq_versa", "torch", "librosa", "numpy"],
-        description=description,
-        paper_reference="https://arxiv.org/pdf/2410.06675",
-        implementation_source="https://github.com/ftshijt/scoreq",
-    )
 
 
 def register_scoreq_metric(registry):

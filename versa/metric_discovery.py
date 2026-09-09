@@ -12,12 +12,17 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
+import yaml
 
 from versa.definition import MetricCategory, MetricRegistry, MetricType
+from versa.metric_metadata import (
+    _qwen2_audio_metadata,
+    _qwen2_audio_aliases,
+    _qwen_omni_metadata,
+    _qwen_omni_aliases,
+    _squim_metadata,
+    _scoreq_metadata,
+)
 
 _MCD_F0_DEFAULTS = {
     "name": "mcd_f0",
@@ -234,7 +239,7 @@ def recommend_config(task: str, device: str) -> str:
         f"# Recommended VERSA score config for task={task_key}, device={device_key}",
         "# Save this YAML and pass it with --score_config.",
     ]
-    body = _safe_dump_yaml(config)
+    body = yaml.safe_dump(config, sort_keys=False)
     return "\n".join(header) + "\n" + body
 
 
@@ -272,48 +277,6 @@ def _format_table(headers: List[str], rows: List[List[str]]) -> str:
             )
         )
     return "\n".join(lines)
-
-
-def _safe_dump_yaml(config: List[Dict[str, Any]]) -> str:
-    if yaml is not None:
-        return yaml.safe_dump(config, sort_keys=False)
-    return "\n".join(_dump_yaml_item(item) for item in config) + "\n"
-
-
-def _dump_yaml_item(item: Dict[str, Any]) -> str:
-    lines = []
-    first = True
-    for key, value in item.items():
-        prefix = "- " if first else "  "
-        first = False
-        if isinstance(value, dict):
-            lines.append(f"{prefix}{key}:")
-            lines.extend(_dump_yaml_dict(value, indent=4))
-        else:
-            lines.append(f"{prefix}{key}: {_dump_yaml_scalar(value)}")
-    return "\n".join(lines)
-
-
-def _dump_yaml_dict(item: Dict[str, Any], indent: int) -> List[str]:
-    lines = []
-    padding = " " * indent
-    for key, value in item.items():
-        if isinstance(value, dict):
-            lines.append(f"{padding}{key}:")
-            lines.extend(_dump_yaml_dict(value, indent + 2))
-        else:
-            lines.append(f"{padding}{key}: {_dump_yaml_scalar(value)}")
-    return lines
-
-
-def _dump_yaml_scalar(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        return "[" + ", ".join(_dump_yaml_scalar(item) for item in value) + "]"
-    return str(value)
 
 
 def _add_source_discovered_metrics(registry: MetricRegistry) -> None:
@@ -377,8 +340,6 @@ def _discover_module_metadata(path: Path) -> List[Tuple[Any, List[str]]]:
 
 
 def _discover_prompt_metrics(path: Path, tree: ast.AST) -> List[Tuple[Any, List[str]]]:
-    from versa.definition import MetricMetadata
-
     prompt_names = _default_prompt_names(tree)
     if not prompt_names and path.name == "qwen_omni.py":
         prompt_names = _default_prompt_names(
@@ -387,52 +348,14 @@ def _discover_prompt_metrics(path: Path, tree: ast.AST) -> List[Tuple[Any, List[
     if not prompt_names:
         return []
 
-    if path.name == "qwen2_audio.py":
-        return [
-            (
-                MetricMetadata(
-                    name=f"qwen2_audio_{prompt_name}",
-                    category=MetricCategory.INDEPENDENT,
-                    metric_type=MetricType.STRING,
-                    requires_reference=False,
-                    requires_text=False,
-                    gpu_compatible=True,
-                    auto_install=False,
-                    dependencies=["transformers", "librosa", "numpy"],
-                    description="Speech property extraction with Qwen2-Audio",
-                    paper_reference="https://arxiv.org/abs/2407.10759",
-                    implementation_source="https://github.com/QwenLM/Qwen2-Audio",
-                ),
-                [
-                    f"qwen2_{prompt_name}_metric",
-                    f"qwen_{prompt_name}",
-                ],
-            )
-            for prompt_name in prompt_names
-        ]
-
-    if path.name == "qwen_omni.py":
-        return [
-            (
-                MetricMetadata(
-                    name=f"qwen_omni_{prompt_name}",
-                    category=MetricCategory.INDEPENDENT,
-                    metric_type=MetricType.STRING,
-                    requires_reference=False,
-                    requires_text=False,
-                    gpu_compatible=True,
-                    auto_install=False,
-                    dependencies=["transformers", "librosa", "numpy", "torch"],
-                    description="Speech property extraction with Qwen2.5-Omni",
-                    paper_reference="https://arxiv.org/abs/2503.20215",
-                    implementation_source="https://github.com/QwenLM/Qwen2.5-Omni",
-                ),
-                [f"qwen_omni_{prompt_name}_metric"],
-            )
-            for prompt_name in prompt_names
-        ]
-
-    return []
+    families = {
+        "qwen2_audio.py": ("qwen2_audio", _qwen2_audio_metadata, _qwen2_audio_aliases),
+        "qwen_omni.py": ("qwen_omni", _qwen_omni_metadata, _qwen_omni_aliases),
+    }
+    if path.name not in families:
+        return []
+    prefix, metadata, aliases = families[path.name]
+    return [(metadata(f"{prefix}_{name}"), aliases(name)) for name in prompt_names]
 
 
 def _default_prompt_names(tree: ast.AST) -> List[str]:
@@ -471,65 +394,14 @@ def _metadata_from_register_call(
 
 
 def _metadata_from_known_helper(node: ast.Call) -> Optional[Any]:
-    from versa.definition import MetricMetadata
-
     if not isinstance(node.func, ast.Name):
         return None
-
-    args = [_literal_metric_value(arg) for arg in node.args]
-    if node.func.id == "_squim_metadata" and len(args) >= 2:
-        name, mode = args[:2]
-        requires_reference = mode == "ref"
-        return MetricMetadata(
-            name=name,
-            category=(
-                MetricCategory.DEPENDENT
-                if requires_reference
-                else MetricCategory.INDEPENDENT
-            ),
-            metric_type=MetricType.DICT,
-            requires_reference=requires_reference,
-            requires_text=False,
-            gpu_compatible=False,
-            auto_install=False,
-            dependencies=["torch", "torchaudio"],
-            description=(
-                "TorchAudio-SQUIM subjective MOS metric"
-                if requires_reference
-                else "TorchAudio-SQUIM reference-less PESQ, STOI, and SI-SDR metrics"
-            ),
-            paper_reference="https://arxiv.org/abs/2302.01147",
-            implementation_source=(
-                "https://pytorch.org/audio/main/tutorials/squim_tutorial.html"
-            ),
-        )
-
-    if node.func.id == "_scoreq_metadata" and len(args) >= 2:
-        name, mode = args[:2]
-        requires_reference = mode == "ref"
-        return MetricMetadata(
-            name=name,
-            category=(
-                MetricCategory.DEPENDENT
-                if requires_reference
-                else MetricCategory.INDEPENDENT
-            ),
-            metric_type=MetricType.FLOAT,
-            requires_reference=requires_reference,
-            requires_text=False,
-            gpu_compatible=True,
-            auto_install=False,
-            dependencies=["scoreq_versa", "torch", "librosa", "numpy"],
-            description=(
-                "ScoreQ reference-based speech quality assessment"
-                if requires_reference
-                else "ScoreQ reference-less speech quality assessment"
-            ),
-            paper_reference="https://arxiv.org/pdf/2410.06675",
-            implementation_source="https://github.com/ftshijt/scoreq",
-        )
-
-    return None
+    helpers = {"_squim_metadata": _squim_metadata, "_scoreq_metadata": _scoreq_metadata}
+    helper = helpers.get(node.func.id)
+    if helper is None or len(node.args) < 2:
+        return None
+    args = [_literal_metric_value(arg) for arg in node.args[:2]]
+    return helper(*args)
 
 
 def _metadata_from_call(node: ast.AST) -> Optional[Any]:

@@ -76,7 +76,8 @@ except ImportError:
     )
     Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor = None, None
 
-from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
+from versa.metric_metadata import _qwen_omni_metadata, _qwen_omni_aliases
+from versa.definition import BaseMetric
 from versa.utterance_metrics.qwen2_audio import DEFAULT_PROMPTS
 
 
@@ -314,22 +315,6 @@ class QwenOmniMetric(BaseMetric):
         return f"qwen_omni_{cls.metric_name}" if cls.metric_name else "qwen_omni"
 
 
-def _qwen_omni_metadata(name):
-    return MetricMetadata(
-        name=name,
-        category=MetricCategory.INDEPENDENT,
-        metric_type=MetricType.STRING,
-        requires_reference=False,
-        requires_text=False,
-        gpu_compatible=True,
-        auto_install=False,
-        dependencies=["transformers", "librosa", "numpy", "torch"],
-        description="Speech property extraction with Qwen2.5-Omni",
-        paper_reference="https://arxiv.org/abs/2503.20215",
-        implementation_source="https://github.com/QwenLM/Qwen2.5-Omni",
-    )
-
-
 def _make_qwen_omni_metric_class(metric_name):
     class _SpecificQwenOmniMetric(QwenOmniMetric):
         pass
@@ -353,7 +338,7 @@ def register_qwen_omni_metric(registry):
         registry.register(
             metric_class,
             _qwen_omni_metadata(registry_name),
-            aliases=[f"qwen_omni_{metric_name}_metric"],
+            aliases=_qwen_omni_aliases(metric_name),
         )
 
 
