@@ -145,3 +145,30 @@ def test_default_path_untouched_by_the_backend_swap():
     out = signal_metric(est, src, compute_permutation=False)
     mir_sdr, _, _, _ = mir_bss(src, est, compute_permutation=False)
     assert out["sdr"] == pytest.approx(float(np.mean(mir_sdr)), abs=1e-9)
+
+
+def test_permutation_three_source_cyclic_shift():
+    """Two sources cannot tell a permutation from its inverse; three can.
+
+    With references [s1, s2, s3] and estimates [s2, s3, s1], the assignment
+    that aligns the estimate is perm = [2, 0, 1] (estimate perm[j] belongs to
+    reference j). Applying the inverse instead would leave every source
+    mismatched, so this pins the convention the backend returns.
+    """
+    rng = np.random.RandomState(0)
+    T = 16000
+
+    def narrowband(freq):
+        kernel = np.hanning(64) * np.cos(2 * np.pi * freq * np.arange(64) / 16000)
+        return np.convolve(rng.randn(T), kernel, "same") / 10
+
+    refs = np.stack([narrowband(500), narrowband(2000), narrowband(4000)])
+    est = np.stack([refs[1], refs[2], refs[0]]) + 0.01 * rng.randn(3, T)
+
+    out = signal_metric(est, refs, compute_permutation=True)
+    assert out["permutation"] == [2, 0, 1]
+    for i in range(3):
+        assert out[f"si_snr_src{i}"] > 20.0
+        assert out[f"sdr_src{i}"] > 20.0
+    # and without the flag the same input scores as a failure
+    assert signal_metric(est, refs)["si_snr"] < 0.0
