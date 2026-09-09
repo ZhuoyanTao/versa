@@ -205,6 +205,17 @@ def get_parser() -> argparse.Namespace:
     return parser
 
 
+def _text_required_multi_source_metrics(score_config, score_metadata):
+    """Return configured multi-source metrics needing unsupported text input."""
+    return [
+        config["name"]
+        for config in score_config
+        if score_metadata[config["name"]]
+        and score_metadata[config["name"]].requires_multiple_sources
+        and score_metadata[config["name"]].requires_text
+    ]
+
+
 def main():
     parser = get_parser()
     args = parser.parse_args()
@@ -325,6 +336,14 @@ def main():
     ]
 
     if multi_source_mode:
+        text_required_metrics = _text_required_multi_source_metrics(
+            score_config, score_metadata
+        )
+        if text_required_metrics:
+            parser.error(
+                "multi-source scoring does not yet support metrics requiring "
+                "reference text: " + ", ".join(text_required_metrics)
+            )
         if len(multi_source_score_config) != len(score_config):
             parser.error(
                 "--pred_sources/--gt_sources can only be used with metrics that "

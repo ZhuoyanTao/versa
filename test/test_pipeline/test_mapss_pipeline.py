@@ -1,8 +1,9 @@
 import json
+from dataclasses import replace
 
 import pytest
 
-from versa.bin.scorer import get_parser
+from versa.bin.scorer import _text_required_multi_source_metrics, get_parser
 from versa.definition import (
     BaseMetric,
     MetricCategory,
@@ -60,6 +61,20 @@ def test_multi_source_parser_accepts_ordered_scp_lists():
 
     assert args.pred_sources == ["pred-1.scp", "pred-2.scp"]
     assert args.gt_sources == ["ref-1.scp", "ref-2.scp"]
+
+
+def test_multi_source_rejects_only_metrics_that_require_text():
+    metadata = OrderedSourceMetric().get_metadata()
+    score_config = [{"name": "ordered_source"}]
+
+    assert (
+        _text_required_multi_source_metrics(score_config, {"ordered_source": metadata})
+        == []
+    )
+    assert _text_required_multi_source_metrics(
+        score_config,
+        {"ordered_source": replace(metadata, requires_text=True)},
+    ) == ["ordered_source"]
 
 
 def test_multi_source_pipeline_preserves_order_and_writes_jsonl(tmp_path):
