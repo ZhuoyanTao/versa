@@ -13,7 +13,7 @@ from versa.metric_registry import load_metric_symbol, metric_symbol_names
 try:
     __version__ = version("versa-speech-audio-toolkit")
 except PackageNotFoundError:
-    __version__ = "1.0.0"
+    __version__ = "1.1.0"
 
 os.environ.setdefault(
     "NUMBA_CACHE_DIR", str(Path.cwd() / "versa_cache" / "numba_cache")
