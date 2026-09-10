@@ -106,7 +106,7 @@ def run_scoring(
         metadata = scorer.registry.get_metadata(config["name"])
         if metadata and metadata.category == MetricCategory.DISTRIBUTIONAL:
             if corpus_defaults is not None:
-                config = {**corpus_defaults(config), **config}
+                config = {**corpus_defaults, **config}
             corpus_score_config.append(config)
         else:
             utterance_score_config.append(config)

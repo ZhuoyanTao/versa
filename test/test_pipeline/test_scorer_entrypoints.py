@@ -20,6 +20,48 @@ from versa.definition import (
 )
 
 
+class UtteranceMetric(BaseMetric):
+    def _setup(self):
+        self.io = self.config.get("io")
+        self.cache_dir = self.config.get("cache_dir")
+
+    def get_metadata(self):
+        return MetricMetadata(
+            "test_utterance",
+            MetricCategory.INDEPENDENT,
+            MetricType.FLOAT,
+            False,
+            False,
+            False,
+            False,
+            [],
+            "test",
+        )
+
+    def compute(self, predictions, references=None, metadata=None):
+        self.calls["utterance"].append((references is not None, metadata["text"]))
+        return {"test_score": 0.5}
+
+
+class CorpusMetric(UtteranceMetric):
+    def get_metadata(self):
+        return MetricMetadata(
+            "test_corpus",
+            MetricCategory.DISTRIBUTIONAL,
+            MetricType.FLOAT,
+            False,
+            False,
+            False,
+            False,
+            [],
+            "test",
+        )
+
+    def compute(self, predictions, references=None, metadata=None):
+        self.calls["corpus"].append((predictions, references, self.config, metadata))
+        return {"corpus_score": 0.25}
+
+
 @pytest.fixture
 def scoring_case(tmp_path, monkeypatch):
     for key in (
@@ -36,46 +78,7 @@ def scoring_case(tmp_path, monkeypatch):
         monkeypatch.setenv(key, os.environ.get(key, ""))
     calls = {"utterance": [], "corpus": [], "closed": [], "released": []}
 
-    class UtteranceMetric(BaseMetric):
-        def _setup(self):
-            self.io = self.config.get("io")
-            self.cache_dir = self.config.get("cache_dir")
-
-        def get_metadata(self):
-            return MetricMetadata(
-                "test_utterance",
-                MetricCategory.INDEPENDENT,
-                MetricType.FLOAT,
-                False,
-                False,
-                False,
-                False,
-                [],
-                "test",
-            )
-
-        def compute(self, predictions, references=None, metadata=None):
-            calls["utterance"].append((references is not None, metadata["text"]))
-            return {"test_score": 0.5}
-
-    class CorpusMetric(UtteranceMetric):
-        def get_metadata(self):
-            return MetricMetadata(
-                "test_corpus",
-                MetricCategory.DISTRIBUTIONAL,
-                MetricType.FLOAT,
-                False,
-                False,
-                False,
-                False,
-                [],
-                "test",
-            )
-
-        def compute(self, predictions, references=None, metadata=None):
-            calls["corpus"].append((predictions, references, self.config, metadata))
-            return {"corpus_score": 0.25}
-
+    UtteranceMetric.calls = calls
     registry = MetricRegistry()
     for cls in (UtteranceMetric, CorpusMetric):
         registry.register(cls, cls().get_metadata())
@@ -217,3 +220,58 @@ def test_cuda_validation(scoring_case, monkeypatch):
     monkeypatch.setattr(scoring.torch.cuda, "is_available", lambda: False)
     with pytest.raises(RuntimeError, match="no CUDA device"):
         scorer.main()
+
+
+def test_report_from_shared_scoring(scoring_case, monkeypatch):
+    root, argv, _ = scoring_case
+    report = root / "report.md"
+    monkeypatch.setattr(sys, "argv", argv + ["--report", str(report)])
+    scorer.main()
+    assert "test_score" in report.read_text()
+
+
+def test_worker_count_reaches_scorer(scoring_case, monkeypatch):
+    _, argv, _ = scoring_case
+    original = scoring.run_scoring
+    workers = []
+
+    def run(args, instance, *positional, **keywords):
+        score_utterances = instance.score_utterances
+
+        def score(*positional, **keywords):
+            workers.append(keywords.pop("num_workers"))
+            return score_utterances(*positional, **keywords)
+
+        monkeypatch.setattr(instance, "score_utterances", score)
+        return original(args, instance, *positional, **keywords)
+
+    monkeypatch.setattr(scoring, "run_scoring", run)
+    monkeypatch.setattr(sys, "argv", argv + ["--num_workers", "2"])
+    scorer.main()
+    assert workers == [2]
+
+
+@pytest.mark.parametrize("entrypoint", [scorer, scorer_chunk])
+def test_invalid_config_rejected_before_audio_loading(
+    scoring_case, monkeypatch, entrypoint
+):
+    root, argv, calls = scoring_case
+    (root / "config.yaml").write_text("- name: unknown_metric\n")
+    (root / "pred/utt.wav").unlink()
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        entrypoint.main()
+    assert exc.value.code == 2
+    assert not calls["utterance"] and not calls["corpus"]
+
+
+@pytest.mark.parametrize("entrypoint", [scorer, scorer_chunk])
+def test_literal_none_reference_without_text(scoring_case, monkeypatch, entrypoint):
+    _, argv, calls = scoring_case
+    argv[argv.index("--gt") + 1] = "None"
+    text_index = argv.index("--text")
+    del argv[text_index : text_index + 2]
+    monkeypatch.setattr(sys, "argv", argv)
+    entrypoint.main()
+    assert calls["utterance"] == [(False, None)]
+    assert calls["corpus"][0][1] is None

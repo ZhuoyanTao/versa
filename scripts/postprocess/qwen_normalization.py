@@ -1,3 +1,6 @@
+# Copyright 2025 Jiatong Shi
+# Apache 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+
 """Shared, model-free Qwen output normalization rules."""
 
 import re

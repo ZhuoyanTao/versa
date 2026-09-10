@@ -333,7 +333,7 @@ def main():
         text_info,
         corpus_inputs=(pred_for_corpus, gt_for_corpus),
         parser=parser,
-        corpus_defaults=lambda config: {"io": args.io},
+        corpus_defaults={"io": args.io},
         corpus_use_gt=args.gt is not None,
     )
     assert has_metrics, "no scoring function is provided"
