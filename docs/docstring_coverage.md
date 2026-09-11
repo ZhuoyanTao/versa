@@ -25,9 +25,11 @@ CodeRabbit documents its check as applying to functions touched by the diff.
 This explains why documentation of test helpers and script adapters matters in
 addition to library APIs. [CodeRabbit pre-merge checks](https://docs.coderabbit.ai/pr-reviews/pre-merge-checks)
 
-PR #95's multi-source changes are not in this checkout. The existing
-`signal_metric` documentation explicitly describes its scalar, single-source
-limitation rather than promising that PR's permutation support.
+The initial audit preceded integration of PR #95. The PR branch now includes
+upstream `20240e2`, and `signal_metric` documents multi-source means, per-source
+results, and optional permutation alignment. Its executable AST matches upstream.
+The follow-up validation passed 54 affected tests and all three coverage gates;
+the package totals below remain unchanged.
 
 ## Reproduced local results
 
