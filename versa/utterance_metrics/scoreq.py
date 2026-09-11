@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""ScoreQ reference-based and reference-free speech quality evaluation."""
 import logging
 import sys
 import ast
@@ -24,6 +25,10 @@ try:
     sys.modules.setdefault("fairseq.meters", fairseq_meters)
 
     def _legacy_fairseq_args_to_cfg(args):
+        """Convert flat legacy checkpoint arguments into OmegaConf sections.
+
+        Parse string-valued latent_temp literals and supply generation defaults
+        needed by the installed Fairseq checkpoint loader."""
         values = dict(vars(args))
         for key in ("latent_temp",):
             value = values.get(key)
@@ -38,6 +43,7 @@ try:
         generation.setdefault("print_alignment", None)
 
         def section(name, source_key=None):
+            """Copy legacy arguments into a named Fairseq component configuration."""
             data = dict(values)
             data["_name"] = values.get(source_key or name)
             return data
@@ -80,6 +86,7 @@ def scoreq_nr_setup(
     cache_dir="versa_cache/scoreq_pt-models",
     use_gpu=False,
 ):
+    """Load reference-free ScoreQ for a domain and device, using cache_dir for weights."""
     if use_gpu:
         device = "cuda"
     else:
@@ -100,6 +107,7 @@ def scoreq_ref_setup(
     cache_dir="./scoreq_pt-models",
     use_gpu=False,
 ):
+    """Load reference-based ScoreQ for a domain and device, using cache_dir for weights."""
     if use_gpu:
         device = "cuda"
     else:
@@ -117,6 +125,7 @@ def scoreq_ref_setup(
 
 def scoreq_nr(model, pred_x, fs):
     # NOTE(jiatong): current model only have 16k options
+    """Resample mono predictions from fs Hz to 16 kHz and return ``scoreq_nr``."""
     if fs != 16000:
         pred_x = resample_audio(pred_x, fs, 16000)
 
@@ -125,6 +134,7 @@ def scoreq_nr(model, pred_x, fs):
 
 def scoreq_ref(model, pred_x, gt_x, fs):
     # NOTE(jiatong): current model only have 16k options
+    """Resample a mono prediction/reference pair to 16 kHz and return ``scoreq_ref``."""
     if fs != 16000:
         gt_x = resample_audio(gt_x, fs, 16000)
         pred_x = resample_audio(pred_x, fs, 16000)
@@ -136,6 +146,7 @@ class ScoreqMetric(BaseMetric):
     """ScoreQ speech quality metric."""
 
     def _setup(self):
+        """Validate the ScoreQ mode and load its model using the configured cache/device."""
         self.mode = self.config.get("mode", "nr")
         if self.mode not in {"nr", "ref"}:
             raise ValueError(f"Invalid ScoreQ mode: {self.mode}")
@@ -160,6 +171,12 @@ class ScoreqMetric(BaseMetric):
             )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return a ScoreQ prediction under ``scoreq_nr`` or ``scoreq_ref``.
+
+        Inputs are mono waveforms at ``metadata["sample_rate"]`` Hz (default
+        16000), resampled to 16 kHz without channel mixing or length alignment.
+        Reference mode requires both arrays; missing required audio raises
+        ValueError. The score is returned on the backend scale without clipping."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if self.mode == "ref" and references is None:
@@ -172,6 +189,7 @@ class ScoreqMetric(BaseMetric):
         return scoreq_nr(self.model, pred_x, fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _scoreq_metadata(f"scoreq_{self.mode}", self.mode)
 
 
@@ -179,6 +197,7 @@ class ScoreqNrMetric(ScoreqMetric):
     """Reference-less ScoreQ speech quality metric."""
 
     def _setup(self):
+        """Default to reference-free mode before loading the ScoreQ model."""
         self.config = {**self.config, "mode": self.config.get("mode", "nr")}
         super()._setup()
 
@@ -187,6 +206,7 @@ class ScoreqRefMetric(ScoreqMetric):
     """Reference-based ScoreQ speech quality metric."""
 
     def _setup(self):
+        """Default to reference-based mode before loading the ScoreQ model."""
         self.config = {**self.config, "mode": self.config.get("mode", "ref")}
         super()._setup()
 

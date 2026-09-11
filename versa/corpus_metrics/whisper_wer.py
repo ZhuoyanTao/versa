@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Whisper corpus transcription and word, character, or phoneme error rates."""
 import logging
 
 import numpy as np
@@ -43,6 +44,10 @@ def whisper_wer_setup(
     use_gpu=True,
     cache_dir="versa_cache/whisper",
 ):
+    """Load Whisper and its text cleaner, optionally adding language-specific phonemizers.
+
+    The default tag selects large. Weights may be downloaded into cache_dir;
+    calc_per requires ESPnet phoneme tokenization support."""
     if model_tag == "default":
         model_tag = "large"
     device = "cuda" if use_gpu else "cpu"
@@ -69,6 +74,7 @@ def whisper_wer_setup(
 
 
 def _flatten_phonemes(tokens):
+    """Split underscore-separated phone tokens, discarding empty fragments."""
     return [phone for token in tokens for phone in token.strip().split("_") if phone]
 
 
@@ -205,6 +211,7 @@ class WhisperWerMetric(BaseMetric):
     """Whisper ASR-based WER/CER edit counts."""
 
     def _setup(self):
+        """Load the configured Whisper recognizer and retain decoding/cache settings."""
         self.model_tag = self.config.get("model_tag", "default")
         self.beam_size = self.config.get("beam_size", 5)
         self.text_cleaner = self.config.get("text_cleaner", "whisper_basic")
@@ -221,6 +228,17 @@ class WhisperWerMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return Whisper word/character edit counts for a mono utterance.
+
+        Require predictions and reference text in metadata text or a string
+        references argument. Use metadata sample_rate in Hz (default 16000),
+        resampling to 16 kHz for ASR without channel mixing. Return
+        whisper_hyp_text, ref_text, and whisper_wer_*/whisper_cer_* counts
+        for delete, insert, replace, and equal; these are counts, not error rates.
+        Missing audio or text raises ValueError; inference failures propagate.
+        Reuse whisper_hyp_text from metadata or general_cache when available.
+        When calc_per is enabled, also compute phoneme edit counts using the
+        detected or cached whisper_language/language value."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -252,10 +270,12 @@ class WhisperWerMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _whisper_wer_metadata()
 
 
 def _whisper_wer_metadata():
+    """Return registry metadata describing whisper wer inputs and dependencies."""
     return MetricMetadata(
         name="whisper_wer",
         category=MetricCategory.NON_MATCH,

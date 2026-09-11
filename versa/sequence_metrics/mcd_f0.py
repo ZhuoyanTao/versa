@@ -4,6 +4,7 @@
 # Adapted/Inspired by ESPnet/S3PRL-VC from Wen-Chin Huang and Tomoki Hayashi
 # Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""WORLD-based mel-cepstral distortion and pitch comparison."""
 import logging
 
 import numpy as np
@@ -26,6 +27,7 @@ except ImportError:
 
 
 def _ensure_mcd_f0_dependencies():
+    """Raise ImportError if a required WORLD, SPTK, SciPy, or DTW component is absent."""
     if any(
         dependency is None
         for dependency in (pysptk, pw, scipy, fastdtw, firwin, lfilter)
@@ -154,6 +156,11 @@ def world_extract(
     mcep_alpha=0.466,
     filter_cutoff=70,
 ):
+    """Extract WORLD spectra, mel cepstra, aperiodicity, F0, and normalized power.
+
+    Input is floating audio at fs Hz; sample-by-channel input uses channel 0.
+    Scale to int16 amplitude and low-cut filter before analysis. F0 bounds
+    and filter cutoff use Hz; mcep_shift is milliseconds and mcep_fftl is samples."""
     _ensure_mcd_f0_dependencies()
     # scale from [-1, 1] to [-32768, 32767]
     x = x * np.iinfo(np.int16).max
@@ -199,6 +206,12 @@ def mcd_f0(
     power_threshold=-20,
     dtw=False,
 ):
+    """Compare WORLD features using optional DTW or truncated frame alignment.
+
+    Inputs share fs in Hz and use their first channel. Return mcd in dB,
+    f0rmse in Hz (lower is better), and f0corr (higher is better). Non-DTW
+    alignment asserts the sequence mismatch is below the configured fraction.
+    DTW filters low-power frames; failed voiced-frame comparisons may yield NaN."""
     _ensure_mcd_f0_dependencies()
 
     pred_feats = world_extract(
@@ -290,6 +303,7 @@ class McdF0Metric(BaseMetric):
     """Mel cepstral distortion and F0 metrics."""
 
     def _setup(self):
+        """Check analysis dependencies and retain pitch, cepstral, and alignment settings."""
         _ensure_mcd_f0_dependencies()
         self.f0min = self.config.get("f0min", 40)
         self.f0max = self.config.get("f0max", 800)
@@ -302,6 +316,12 @@ class McdF0Metric(BaseMetric):
         self.dtw = self.config.get("dtw", False)
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return mcd, f0rmse, and f0corr for a required prediction/reference pair.
+
+        Read shared sample_rate in Hz from metadata (default 16000); no resampling
+        is performed. Mono or sample-by-channel arrays use the first channel.
+        Missing audio raises ValueError; feature extraction and alignment behavior
+        follow ``mcd_f0``, including possible NaN pitch results."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -324,10 +344,12 @@ class McdF0Metric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _mcd_f0_metadata()
 
 
 def _mcd_f0_metadata():
+    """Return registry metadata describing mcd f0 inputs and dependencies."""
     return MetricMetadata(
         name="mcd_f0",
         category=MetricCategory.DEPENDENT,

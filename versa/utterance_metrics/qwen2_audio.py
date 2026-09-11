@@ -455,6 +455,9 @@ class Qwen2AudioMetric(BaseMetric):
     metric_name = None
 
     def _setup(self):
+        """Require a prompt metric name and load the configured Qwen2-Audio model/processor.
+
+        Model setup may download weights and tokenizer assets to the selected cache."""
         self.model_tag = self.config.get("model_tag", "default")
         self.start_prompt = self.config.get(
             "start_prompt",
@@ -476,6 +479,13 @@ class Qwen2AudioMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return the Qwen2-Audio response under ``qwen_<metric_name>``.
+
+        Provide mono audio with metadata sample_rate in Hz (default 16000).
+        Resample to the processor rate without channel mixing. References are
+        unused. Use the configured prompt or the default prompt for this metric.
+        Missing audio or an unavailable prompt raises ValueError. Responses are
+        decoded text strings, not normalized numeric quality scores."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -491,15 +501,21 @@ class Qwen2AudioMetric(BaseMetric):
         return {f"qwen_{self.metric_name}": response}
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _qwen2_audio_metadata(self.registry_name())
 
     @classmethod
     def registry_name(cls):
+        """Return the canonical Qwen2-Audio name for this class-level prompt metric."""
         return f"qwen2_audio_{cls.metric_name}" if cls.metric_name else "qwen2_audio"
 
 
 def _make_qwen2_metric_class(metric_name):
+    """Create a named Qwen2-Audio subclass bound to one default prompt identifier."""
+
     class _SpecificQwen2AudioMetric(Qwen2AudioMetric):
+        """Bind a single prompt identifier to the shared Qwen2-Audio scoring behavior."""
+
         pass
 
     _SpecificQwen2AudioMetric.metric_name = metric_name

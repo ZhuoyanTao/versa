@@ -21,6 +21,7 @@ os.environ.setdefault(
 
 
 def __getattr__(name):
+    """Lazily import and cache a public metric symbol, raising for unknown names."""
     if name in metric_symbol_names():
         symbol = load_metric_symbol(name)
         globals()[name] = symbol
@@ -29,4 +30,5 @@ def __getattr__(name):
 
 
 def __dir__():
+    """List loaded attributes together with public metric symbols available lazily."""
     return sorted(set(globals()) | set(metric_symbol_names()))

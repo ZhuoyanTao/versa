@@ -9,7 +9,7 @@
 Speech Properties for Metadata Modeling
 
 This module provides functions for extracting various speech properties
-from audio using Qwen2-Audio. The properties are organized into the
+from audio using Qwen2.5-Omni. The properties are organized into the
 following categories:
 
 1. Speaker Characteristics
@@ -55,8 +55,8 @@ Each function follows the same signature pattern:
     - qwen_omni_singing_technique_metric: Singing Techniques (styles)
 
 Each function returns a dictionary with a single key-value pair where
-the key is the metric name prefixed with "qwen_" and the value is the
-model's response.
+the key is the metric name prefixed with "qwen_omni_" and the value is a
+list of decoded model responses.
 """
 
 import copy
@@ -88,11 +88,16 @@ def qwen_omni_model_setup(
     device_map: Optional[str] = None,
     cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Set up the Qwen2-Audio model for speech analysis.
+    """Load Qwen2.5-Omni model and processor classes for speech analysis.
 
     Args:
-        model_tag: Model identifier for Qwen2-Audio, defaults to Qwen2-Audio-7B-Instruct
+        model_tag: Checkpoint identifier. Pass "default" to select
+            Qwen/Qwen2.5-Omni-7B, as the metric wrapper does. The legacy
+            direct-call default still names a Qwen2-Audio checkpoint.
         start_prompt: Initial system prompt for the model conversation
+        use_gpu: Prefer CUDA when available, otherwise use CPU.
+        device_map: Explicit model placement, overriding the inferred device.
+        cache_dir: Optional Hugging Face download cache for model assets.
 
     Returns:
         Dictionary containing model, processor, and conversation starter
@@ -143,7 +148,8 @@ def qwen_omni_base_metric(
         max_length: Maximum length for model generation
 
     Returns:
-        Model's response as a string
+        List of decoded text responses from the processor. The legacy return
+        annotation says str, but batch_decode returns a list.
     """
     if custom_prompt is None:
         raise ValueError("Custom prompt must be provided for the qwen_omni model.")
@@ -268,6 +274,9 @@ class QwenOmniMetric(BaseMetric):
     metric_name = None
 
     def _setup(self):
+        """Require a prompt metric name and load the configured Qwen2.5-Omni model/processor.
+
+        Model setup may download weights and tokenizer assets to the selected cache."""
         self.model_tag = self.config.get("model_tag", "default")
         self.start_prompt = self.config.get(
             "start_prompt",
@@ -293,6 +302,13 @@ class QwenOmniMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return the Qwen2.5-Omni response under ``qwen_omni_<metric_name>``.
+
+        Provide mono audio with metadata sample_rate in Hz (default 16000).
+        Resample to the processor rate without channel mixing. References are
+        unused. Use the configured prompt or the default prompt for this metric.
+        Missing audio or an unavailable prompt raises ValueError. Responses are
+        lists of decoded text strings, not normalized numeric quality scores."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -308,15 +324,21 @@ class QwenOmniMetric(BaseMetric):
         return {f"qwen_omni_{self.metric_name}": response}
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _qwen_omni_metadata(self.registry_name())
 
     @classmethod
     def registry_name(cls):
+        """Return the canonical Qwen2.5-Omni name for this class-level prompt metric."""
         return f"qwen_omni_{cls.metric_name}" if cls.metric_name else "qwen_omni"
 
 
 def _make_qwen_omni_metric_class(metric_name):
+    """Create a named Qwen2.5-Omni subclass bound to one default prompt identifier."""
+
     class _SpecificQwenOmniMetric(QwenOmniMetric):
+        """Bind a single prompt identifier to the shared Qwen2.5-Omni scoring behavior."""
+
         pass
 
     _SpecificQwenOmniMetric.metric_name = metric_name

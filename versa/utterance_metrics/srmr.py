@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Speech-to-reverberation modulation energy ratio scoring."""
 import logging
 from typing import Dict, Any, Optional
 

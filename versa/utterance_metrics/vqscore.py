@@ -3,6 +3,7 @@
 # Copyright 2025 Wangyou Zhang
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""VQScore spectral reconstruction similarity for speech quality."""
 import logging
 from pathlib import Path
 import sys
@@ -33,6 +34,10 @@ except ImportError:
 
 
 def vqscore_setup(use_gpu=False):
+    """Load the installed VQScore config and checkpoint on CPU or CUDA.
+
+    Enable cuDNN benchmarking for CUDA and retain the input transform on the
+    model. Missing VQScore raises ModuleNotFoundError with installer guidance."""
     if use_gpu:
         device = "cuda"
     else:
@@ -78,6 +83,7 @@ def vqscore_setup(use_gpu=False):
 
 # ported from VQscore/inference.py
 def stft_magnitude(x, hop_size, fft_size=512, win_length=512):
+    """Return batch/time/frequency STFT magnitudes with a floor before the square root."""
     if x.is_cuda:
         x_stft = torch.stft(
             x,
@@ -103,6 +109,7 @@ def stft_magnitude(x, hop_size, fft_size=512, win_length=512):
 
 
 def cos_similarity(SP_noisy, SP_y_noisy, eps=1e-5):
+    """Average cosine similarity over feature vectors, stabilizing norms with eps."""
     SP_noisy_norm = torch.norm(SP_noisy, p=2, dim=-1, keepdim=True) + eps
     SP_y_noisy_norm = torch.norm(SP_y_noisy, p=2, dim=-1, keepdim=True) + eps
     Cos_frame = torch.sum(
@@ -114,6 +121,7 @@ def cos_similarity(SP_noisy, SP_y_noisy, eps=1e-5):
 
 def vqscore_metric(model, pred_x, fs):
     # NOTE(wangyou): current model only have 16k options
+    """Resample mono audio from fs Hz to 16 kHz and return latent cosine ``vqscore``."""
     if fs != 16000:
         pred_x = resample_audio(pred_x, fs, 16000)
 
@@ -137,10 +145,16 @@ class VqscoreMetric(BaseMetric):
     """VQScore speech quality assessment metric."""
 
     def _setup(self):
+        """Load the local VQScore checkpoint on the configured device."""
         self.use_gpu = self.config.get("use_gpu", False)
         self.model = vqscore_setup(use_gpu=self.use_gpu)
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ``vqscore`` similarity between encoded and quantized mono audio.
+
+        Read sample_rate in Hz from metadata (default 16000) and resample to
+        16 kHz without channel mixing. References are unused. The mean latent
+        cosine score is returned without clipping; missing audio raises ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -148,10 +162,12 @@ class VqscoreMetric(BaseMetric):
         return vqscore_metric(self.model, np.asarray(predictions), fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _vqscore_metadata()
 
 
 def _vqscore_metadata():
+    """Return registry metadata describing vqscore inputs and dependencies."""
     return MetricMetadata(
         name="vqscore",
         category=MetricCategory.INDEPENDENT,

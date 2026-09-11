@@ -3,6 +3,7 @@
 # Copyright 2025 Haoran Wang
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""HuBERT CTC speech recognition and corpus transcription error rates."""
 import logging
 
 import numpy as np
@@ -33,6 +34,9 @@ def hubert_wer_setup(
     use_gpu=True,
     cache_dir="versa_cache/huggingface",
 ):
+    """Load the HuBERT CTC model, processor, and text cleaner on CPU or CUDA.
+
+    Hugging Face model and processor assets may be downloaded into cache_dir."""
     if model_tag == "default":
         model_tag = "facebook/hubert-large-ls960-ft"
     device = "cuda" if use_gpu else "cpu"
@@ -144,6 +148,7 @@ class HubertWerMetric(BaseMetric):
     """HuBERT CTC ASR-based WER/CER edit counts."""
 
     def _setup(self):
+        """Load the configured HuBERT recognizer and retain decoding/cache settings."""
         self.model_tag = self.config.get("model_tag", "default")
         self.text_cleaner = self.config.get("text_cleaner", "whisper_basic")
         self.use_gpu = self.config.get("use_gpu", True)
@@ -156,6 +161,15 @@ class HubertWerMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return HuBERT word/character edit counts for a mono utterance.
+
+        Require predictions and reference text in metadata text or a string
+        references argument. Use metadata sample_rate in Hz (default 16000),
+        resampling to 16 kHz for ASR without channel mixing. Return
+        hubert_hyp_text, ref_text, and hubert_wer_*/hubert_cer_* counts
+        for delete, insert, replace, and equal; these are counts, not error rates.
+        Missing audio or text raises ValueError; inference failures propagate.
+        Reuse hubert_hyp_text from metadata or general_cache when available."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -181,10 +195,12 @@ class HubertWerMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _hubert_wer_metadata()
 
 
 def _hubert_wer_metadata():
+    """Return registry metadata describing hubert wer inputs and dependencies."""
     return MetricMetadata(
         name="hubert_wer",
         category=MetricCategory.NON_MATCH,

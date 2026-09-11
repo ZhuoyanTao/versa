@@ -53,6 +53,7 @@ class ScoreConfigValidationError:
     message: str
 
     def format(self) -> str:
+        """Format the error with its configuration index and metric name, if known."""
         location = "score_config"
         if self.index is not None:
             location += f"[{self.index}]"
@@ -65,6 +66,7 @@ class ScoreConfigValidationException(ValueError):
     """Raised when a score configuration cannot be used safely."""
 
     def __init__(self, errors: Iterable[ScoreConfigValidationError]):
+        """Retain all validation issues and combine their messages into one error."""
         self.errors = list(errors)
         message = "Invalid score configuration:\n" + "\n".join(
             f"- {error.format()}" for error in self.errors
@@ -204,6 +206,7 @@ def validate_score_config(
 
 
 def _unknown_metric_message(registry: MetricRegistry, metric_name: str) -> str:
+    """Describe an unknown name, appending up to five substring matches."""
     message = f"unknown metric name '{metric_name}'"
     suggestions = _suggest_metric_names(registry, metric_name)
     if suggestions:
@@ -212,12 +215,14 @@ def _unknown_metric_message(registry: MetricRegistry, metric_name: str) -> str:
 
 
 def _suggest_metric_names(registry: MetricRegistry, metric_name: str) -> List[str]:
+    """Return up to five sorted names or aliases containing the query, ignoring case."""
     query = metric_name.lower()
     names = set(registry.list_metrics()) | set(registry.list_aliases())
     return sorted(name for name in names if query in name.lower())[:5]
 
 
 def _requires_gpu_flag(metric_name: str) -> bool:
+    """Return whether a metric is configured to require explicit GPU opt-in."""
     return metric_name in _GPU_REQUIRED_METRICS or metric_name.startswith(
         _GPU_REQUIRED_PREFIXES
     )
@@ -225,11 +230,16 @@ def _requires_gpu_flag(metric_name: str) -> bool:
 
 @lru_cache(maxsize=None)
 def _dependency_available(dependency: str) -> bool:
+    """Cache whether Python can locate the requested dependency module."""
     return importlib.util.find_spec(dependency) is not None
 
 
 @lru_cache(maxsize=None)
 def _allowed_config_keys(metric_class: type) -> Optional[frozenset]:
+    """Collect literal config keys from the class hierarchy without running setup.
+
+    Include the common name/device keys. Return None when no class source can
+    be parsed, so callers can avoid rejecting keys on incomplete evidence."""
     keys: Set[str] = set(_BASE_CONFIG_KEYS)
     found_source = False
 
@@ -256,6 +266,7 @@ def _allowed_config_keys(metric_class: type) -> Optional[frozenset]:
 
 
 def _self_config_get_key(node: ast.AST) -> Optional[str]:
+    """Extract a literal string key from a ``self.config.get(...)`` AST call."""
     if not isinstance(node, ast.Call):
         return None
     if not isinstance(node.func, ast.Attribute) or node.func.attr != "get":
@@ -271,6 +282,7 @@ def _self_config_get_key(node: ast.AST) -> Optional[str]:
 
 
 def _self_config_subscript_key(node: ast.AST) -> Optional[str]:
+    """Extract a literal string key from a ``self.config[...]`` AST expression."""
     if not isinstance(node, ast.Subscript) or not _is_self_config(node.value):
         return None
     slice_node = node.slice
@@ -280,6 +292,7 @@ def _self_config_subscript_key(node: ast.AST) -> Optional[str]:
 
 
 def _is_self_config(node: ast.AST) -> bool:
+    """Return whether an AST node refers exactly to the ``self.config`` attribute."""
     return (
         isinstance(node, ast.Attribute)
         and node.attr == "config"

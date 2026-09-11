@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+"""Bundled NORESQA convolutional encoders and quality-prediction networks."""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,6 +20,7 @@ import pickle
 
 
 class model_dimred(nn.Module):
+    """Combine four convolution/pooling branches and reduce the final feature axis."""
 
     def __init__(
         self,
@@ -31,6 +33,7 @@ class model_dimred(nn.Module):
         pool_proj=8,
         pool=2,
     ):
+        """Construct parallel 1x1, 3x3, 5x5, and pooled branches with output pooling."""
         super(model_dimred, self).__init__()
 
         self.modules1 = nn.ModuleList()
@@ -44,7 +47,7 @@ class model_dimred(nn.Module):
         self.modules1.append(nn.MaxPool2d((1, pool)))
 
     def forward(self, x):
-
+        """Concatenate activated branch outputs along channels and pool the last axis."""
         a = F.relu(self.modules1[0](x))
         b = F.relu(self.modules1[2]((F.relu(self.modules1[1](x)))))
         c = F.relu(self.modules1[4]((F.relu(self.modules1[3](x)))))
@@ -56,7 +59,10 @@ class model_dimred(nn.Module):
 
 
 class base_encoder(nn.Module):
+    """Encode magnitude/phase features through four dimension-reduction blocks."""
+
     def __init__(self, dev=torch.device("cpu")):
+        """Construct four feature blocks with final-axis pooling factors 4, 4, 4, and 2."""
         super(base_encoder, self).__init__()
         self.dev = dev
 
@@ -66,12 +72,16 @@ class base_encoder(nn.Module):
         self.modelD = model_dimred(in_channel=64, pool=2)
 
     def forward(self, x):
+        """Apply the four convolutional reduction blocks to batched spectral features."""
         x = self.modelD(self.modelC(self.modelB(self.modelA(x))))
         return x
 
 
 class which_clean(nn.Module):
+    """Predict frame-level clean-speech preference logits from paired embeddings."""
+
     def __init__(self):
+        """Construct three temporal convolution blocks ending in two preference channels."""
         super(which_clean, self).__init__()
         n_layers = 2
 
@@ -91,7 +101,7 @@ class which_clean(nn.Module):
         self.dp.append(nn.Dropout(p=dp_num))
 
     def forward(self, x):
-
+        """Return two-channel frame logits after convolution, normalization, and dropout."""
         for i in range(3):
             x = self.encoder[i](x)
             x = self.ebatch[i](x)

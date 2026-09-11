@@ -102,6 +102,8 @@ METRIC_CATEGORIES = {
 
 @dataclass
 class MetricSummary:
+    """Hold finite-value statistics, completeness counts, extrema, and z-score outliers."""
+
     name: str
     category: str
     count: int
@@ -191,6 +193,7 @@ def analyze_records(
 
 
 def discover_numeric_metrics(records: Sequence[Dict[str, Any]]) -> List[str]:
+    """Find sorted numeric fields, excluding booleans, text, and internal fields."""
     metrics = set()
     for record in records:
         for key, value in record.items():
@@ -208,6 +211,12 @@ def summarize_metric(
     outlier_limit: int = 3,
     registry: Optional[MetricRegistry] = None,
 ) -> MetricSummary:
+    """Summarize finite values of one metric across result records.
+
+    Absent keys count as missing; nonnumeric and nonfinite values count as
+    invalid. Statistics are zero when no valid values exist. Confidence limits
+    use mean +/- 1.96 standard errors, and outliers have absolute z-score >= 2.
+    Unknown score direction is ranked as higher-is-better for extrema."""
     values: List[Tuple[str, float]] = []
     missing = 0
     invalid = 0
@@ -283,6 +292,10 @@ def summarize_groups(
     group_by: str,
     registry: Optional[MetricRegistry] = None,
 ) -> Dict[str, Any]:
+    """Group records by a field and rank group means separately for each metric.
+
+    Missing group fields become ``unknown``. Groups with no finite values for
+    a metric are omitted from its ranking; unknown direction sorts descending."""
     grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for record in records:
         grouped[str(record.get(group_by, "unknown"))].append(record)
@@ -316,6 +329,7 @@ def summarize_groups(
 
 
 def write_csv_report(analysis: Dict[str, Any], output_path: str) -> None:
+    """Overwrite a UTF-8 CSV with one row per metric from ``analyze_records``."""
     fields = [
         "metric",
         "category",
@@ -345,6 +359,7 @@ def write_csv_report(analysis: Dict[str, Any], output_path: str) -> None:
 
 
 def write_markdown_report(analysis: Dict[str, Any], output_path: str) -> None:
+    """Overwrite a UTF-8 Markdown summary and outlier report from an analysis."""
     lines = [
         "# VERSA Results Report",
         "",
@@ -388,6 +403,7 @@ def write_markdown_report(analysis: Dict[str, Any], output_path: str) -> None:
 
 
 def write_html_report(analysis: Dict[str, Any], output_path: str) -> None:
+    """Overwrite a self-contained HTML report with summaries, charts, and rankings."""
     category_rows = []
     for category, summaries in analysis["categories"].items():
         expected_values = analysis["record_count"] * len(summaries)
@@ -478,6 +494,7 @@ svg text {{ font-family: inherit; fill: var(--muted); font-size: 11px; }}
 
 
 def metric_category(metric: str, registry: Optional[MetricRegistry] = None) -> str:
+    """Infer a reporting category from registry metadata and metric-name heuristics."""
     metadata = _metadata_for_metric(metric, registry)
     if metadata and metadata.category.value in {"non_match", "distributional"}:
         return metadata.category.value
@@ -503,6 +520,9 @@ def metric_category(metric: str, registry: Optional[MetricRegistry] = None) -> s
 def metric_direction(
     metric: str, registry: Optional[MetricRegistry] = None
 ) -> Optional[bool]:
+    """Infer whether larger scores are better, returning None for unknown names.
+
+    This is a name-based heuristic, not a backend-provided score guarantee."""
     metadata = _metadata_for_metric(metric, registry)
     normalized = _strip_prefix(metadata.name if metadata else metric).lower()
     if any(token in normalized for token in ["wer", "cer", "error", "rmse", "mcd"]):
@@ -533,6 +553,7 @@ def metric_direction(
 
 
 def _metadata_for_metric(metric: str, registry: Optional[MetricRegistry]):
+    """Find the first registry entry matching a metric name or stripped suffix."""
     if registry is None:
         return None
     for candidate in _metric_name_candidates(metric):
@@ -543,6 +564,7 @@ def _metadata_for_metric(metric: str, registry: Optional[MetricRegistry]):
 
 
 def _metric_name_candidates(metric: str) -> List[str]:
+    """Return distinct metric identifiers obtained by progressively removing prefixes."""
     candidates = [metric, _strip_prefix(metric)]
     parts = metric.split("_")
     for index in range(1, len(parts)):
@@ -555,6 +577,9 @@ def _metric_name_candidates(metric: str) -> List[str]:
 
 
 def _collect_input_paths(input_path: str) -> List[Path]:
+    """List a result file or supported files directly inside a directory.
+
+    Raise FileNotFoundError if the path contains no recognized result files."""
     path = Path(input_path)
     if path.is_file():
         return [path]
@@ -568,8 +593,13 @@ def _collect_input_paths(input_path: str) -> List[Path]:
 
 
 def _literal_eval_with_special_floats(line: str) -> Any:
+    """Parse a Python literal record allowing bare infinity and NaN spellings."""
+
     class SpecialFloatTransformer(ast.NodeTransformer):
+        """Replace supported special-float names with constants before literal evaluation."""
+
         def visit_Name(self, node: ast.Name) -> ast.AST:
+            """Convert inf/Infinity and nan/NaN names while preserving source locations."""
             if node.id in {"inf", "Infinity"}:
                 return ast.copy_location(ast.Constant(float("inf")), node)
             if node.id in {"nan", "NaN"}:
@@ -583,6 +613,7 @@ def _literal_eval_with_special_floats(line: str) -> Any:
 
 
 def _to_float(value: Any) -> Optional[float]:
+    """Convert numeric scalars to float; reject booleans and nonnumeric values."""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
@@ -591,6 +622,7 @@ def _to_float(value: Any) -> Optional[float]:
 
 
 def _sample_std(values: Sequence[float], mean: float) -> float:
+    """Return sample standard deviation, or zero for fewer than two observations."""
     if len(values) <= 1:
         return 0.0
     variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
@@ -598,6 +630,7 @@ def _sample_std(values: Sequence[float], mean: float) -> float:
 
 
 def _median(sorted_values: Sequence[float]) -> float:
+    """Return the median of already-sorted values, or zero for an empty sequence."""
     count = len(sorted_values)
     if not count:
         return 0.0
@@ -608,6 +641,7 @@ def _median(sorted_values: Sequence[float]) -> float:
 
 
 def _strip_prefix(metric: str) -> str:
+    """Remove one prefix only if the remainder is a known reporting metric."""
     parts = metric.split("_")
     if len(parts) > 1 and parts[0] not in {"se", "si", "ci", "f0"}:
         candidate = "_".join(parts[1:])
@@ -618,6 +652,7 @@ def _strip_prefix(metric: str) -> str:
 
 
 def _fmt(value: Any) -> str:
+    """Format finite floats to four significant digits and stringify other values."""
     if isinstance(value, float):
         if not math.isfinite(value):
             return str(value)
@@ -626,6 +661,7 @@ def _fmt(value: Any) -> str:
 
 
 def _summary_row(summary: MetricSummary) -> Dict[str, Any]:
+    """Convert a metric summary to CSV fields, flattening its outlier list."""
     return {
         "metric": summary.name,
         "category": summary.category,
@@ -653,6 +689,7 @@ def _summary_row(summary: MetricSummary) -> Dict[str, Any]:
 
 
 def _metric_html_row(summary: MetricSummary) -> str:
+    """Render one metric summary as a table row with escaped names and keys."""
     ci = f"{_fmt(summary.ci95_low)} to {_fmt(summary.ci95_high)}"
     best = f"{html.escape(summary.best_key)} ({_fmt(summary.best_value)})"
     worst = f"{html.escape(summary.worst_key)} ({_fmt(summary.worst_value)})"
@@ -673,6 +710,7 @@ def _metric_html_row(summary: MetricSummary) -> str:
 
 
 def _outlier_html(summaries: Sequence[MetricSummary]) -> str:
+    """Render escaped outlier lists, or a message when no outliers were found."""
     blocks = []
     for summary in summaries:
         if not summary.outliers:
@@ -690,6 +728,7 @@ def _outlier_html(summaries: Sequence[MetricSummary]) -> str:
 
 
 def _ranking_html(analysis: Dict[str, Any]) -> str:
+    """Render the top group for each ranked metric, or empty text if none exist."""
     groups = analysis.get("groups") or {}
     rankings = groups.get("rankings") or {}
     if not rankings:
@@ -709,6 +748,9 @@ def _ranking_html(analysis: Dict[str, Any]) -> str:
 
 
 def _radar_svg(summaries: Sequence[MetricSummary]) -> str:
+    """Plot absolute means scaled to the largest absolute mean in this selection.
+
+    The plot does not normalize metric ranges or account for score direction."""
     if not summaries:
         return '<p class="muted">No metrics available.</p>'
     width = 420
@@ -758,6 +800,7 @@ def _radar_svg(summaries: Sequence[MetricSummary]) -> str:
 
 
 def _sunburst_svg(category_rows: Sequence[Dict[str, Any]]) -> str:
+    """Render category wedges sized by their number of metrics."""
     if not category_rows:
         return '<p class="muted">No categories available.</p>'
     width = 420
@@ -809,6 +852,7 @@ def _arc_path(
     end: float,
     color: str,
 ) -> str:
+    """Build a filled SVG annular sector from radii and angles in radians."""
     large = 1 if end - start > math.pi else 0
     p1 = (cx + math.cos(start) * outer, cy + math.sin(start) * outer)
     p2 = (cx + math.cos(end) * outer, cy + math.sin(end) * outer)

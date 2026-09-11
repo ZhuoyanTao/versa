@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Shared scoring, result persistence, resume, and multi-source orchestration."""
 import gc
 import json
 import logging
@@ -74,6 +75,10 @@ def _score_utterance_worker(utterance):
 
 def audio_loader_setup(audio, io):
     # get ready compute embeddings
+    """Build an utterance mapping from a Kaldi SCP, soundfile SCP, or directory.
+
+    Kaldi entries load lazily. Soundfile SCP values are paths; command pipes
+    raise ValueError and require the Kaldi interface instead."""
     if io == "kaldi":
         audio_files = kaldiio.load_scp(audio)
     elif io == "dir":
@@ -370,6 +375,10 @@ class ScoreProcessor:
         output_file: Optional[str] = None,
         resume: bool = False,
     ):
+        """Bind a metric suite and optionally open its result file.
+
+        Resume appends, repairing a missing final newline first. Otherwise the
+        file is truncated. The processor owns the handle and must be closed."""
         self.metric_suite = metric_suite
         self.output_file = output_file
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -434,6 +443,7 @@ class VersaScorer:
     """Main scorer class that orchestrates the scoring process."""
 
     def __init__(self, registry: MetricRegistry = None):
+        """Bind a registry, or create metadata-only discovery, and prepare its factory."""
         self.registry = registry or self._create_default_registry()
         self.factory = MetricFactory(self.registry)
         self.logger = logging.getLogger(self.__class__.__name__)

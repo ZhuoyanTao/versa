@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""ViSQOL speech and audio quality evaluation against a reference."""
 import os
 
 import numpy as np
@@ -21,6 +22,10 @@ except ImportError:
 def visqol_setup(model):
     # model name related to
     # https://github.com/google/visqol/tree/master/model
+    """Create a ViSQOL API and return it with its required sample rate.
+
+    Speech mode uses 16 kHz; other supported models use 48 kHz. Model files
+    come from the installed package. Unknown tags raise NotImplementedError."""
     if visqol_lib_py is None or visqol_config_pb2 is None:
         raise ImportError(
             "visqol is not installed. Please install visqol following "
@@ -60,6 +65,7 @@ def visqol_setup(model):
 
 
 def visqol_metric(api, api_fs, pred_x, gt_x, fs):
+    """Resample paired mono audio from fs to api_fs Hz and return ``visqol`` MOS-LQO."""
     if api_fs != fs:
         gt_x = resample_audio(gt_x, fs, api_fs)
         pred_x = resample_audio(pred_x, fs, api_fs)
@@ -73,10 +79,17 @@ class VisqolMetric(BaseMetric):
     """Virtual Speech Quality Objective Listener metric."""
 
     def _setup(self):
+        """Create the selected installed ViSQOL model and retain its required sample rate."""
         self.model = self.config.get("model", "default")
         self.api, self.api_fs = visqol_setup(self.model)
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ``visqol`` MOS-LQO for required prediction and reference waveforms.
+
+        Provide mono audio with a shared ``metadata["sample_rate"]`` in Hz
+        (default 16000). Both are resampled to the model rate, without length
+        alignment or channel mixing. Larger MOS-LQO indicates better quality;
+        values are not clipped. Missing either waveform raises ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -92,10 +105,12 @@ class VisqolMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _visqol_metadata()
 
 
 def _visqol_metadata():
+    """Return registry metadata describing visqol score inputs and dependencies."""
     return MetricMetadata(
         name="visqol",
         category=MetricCategory.DEPENDENT,

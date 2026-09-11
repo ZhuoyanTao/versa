@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Frechet audio distance over prediction and reference collections."""
 import logging
 
 from tqdm import tqdm
@@ -22,12 +23,14 @@ except ImportError:
 
 
 def _load_audio_collection(audio, io):
+    """Use an existing keyed audio mapping or load one with the selected I/O mode."""
     if isinstance(audio, dict):
         return audio
     return audio_loader_setup(audio, io)
 
 
 def _fad_metadata():
+    """Return registry metadata describing fad inputs and dependencies."""
     return MetricMetadata(
         name="fad",
         category=MetricCategory.DISTRIBUTIONAL,
@@ -47,6 +50,7 @@ class FadMetric(BaseMetric):
     """Frechet Audio Distance over prediction and reference collections."""
 
     def _setup(self):
+        """Require FADTK, load the configured embedding model, and retain cache/I/O settings."""
         if get_model is None or FrechetAudioDistance is None:
             raise ModuleNotFoundError(
                 "FADTK is not installed. Please install it following `tools/install_fadtk.sh`"
@@ -63,6 +67,18 @@ class FadMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Compare prediction and reference audio collections through cached embeddings.
+
+        Inputs are keyed mappings or paths interpreted by the configured io mode.
+        Use references, then metadata baseline_files, then the configured baseline.
+        Sample rates and channel processing are delegated to FADTK audio loading.
+        Cache embeddings in baseline/eval subdirectories under cache_dir.
+
+        Return ``fad_overall`` and, for extrapolated scoring, ``fad_r2``.
+        Use extrapolation when configured or when collection sizes differ.
+        Distance values retain backend scaling without clipping. Missing prediction
+        or baseline inputs raise ValueError; backend loading/statistics errors propagate.
+        """
         if predictions is None:
             raise ValueError("FAD requires prediction audio files")
 
@@ -97,6 +113,7 @@ class FadMetric(BaseMetric):
         }
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _fad_metadata()
 
 

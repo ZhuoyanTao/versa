@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Silero voice activity detection and speech timestamp extraction."""
 import librosa
 import numpy as np
 import torch
@@ -21,6 +22,10 @@ def vad_model_setup(
     force_reload=False,
     cache_dir="versa_cache/torch",
 ):
+    """Load Silero VAD through Torch Hub and return its model, utility, and thresholds.
+
+    Set the global Hub cache to cache_dir; the call may download model assets.
+    Duration thresholds use the units specified in their parameter names."""
     torch.hub.set_dir(cache_dir)
     hub_kwargs = {
         "repo_or_dir": "snakers4/silero-vad",
@@ -43,6 +48,9 @@ def vad_model_setup(
 
 
 def vad_metric(model_info, pred_x, fs):
+    """Return ``vad_info`` speech start/end timestamps in seconds for mono audio.
+
+    Resample rates above 16 kHz to 16 kHz and rates below 16 kHz to 8 kHz."""
     model = model_info["module"]
     get_speech_ts = model_info["util"]
     # NOTE(jiatong): only work for 16000 Hz
@@ -71,6 +79,7 @@ class VadMetric(BaseMetric):
     """Voice activity detection using Silero VAD."""
 
     def _setup(self):
+        """Load the Silero model and retain configured speech segmentation thresholds."""
         self.threshold = self.config.get("threshold", 0.5)
         self.min_speech_duration_ms = self.config.get("min_speech_duration_ms", 250)
         self.max_speech_duration_s = self.config.get(
@@ -93,6 +102,12 @@ class VadMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return speech intervals in seconds under ``vad_info`` for mono predictions.
+
+        Read the input rate from metadata in Hz (default 16000). The backend
+        helper resamples to 8 or 16 kHz and performs no channel mixing. References
+        are unused; absent predictions raise ValueError. Timestamps are
+        segmentation results, not a quality score."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -100,10 +115,12 @@ class VadMetric(BaseMetric):
         return vad_metric(self.model_info, np.asarray(predictions), fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _vad_metadata()
 
 
 def _vad_metadata():
+    """Return registry metadata describing vad inputs and dependencies."""
     return MetricMetadata(
         name="vad",
         category=MetricCategory.INDEPENDENT,

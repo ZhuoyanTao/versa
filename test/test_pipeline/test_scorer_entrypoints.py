@@ -21,11 +21,15 @@ from versa.definition import (
 
 
 class UtteranceMetric(BaseMetric):
+    """Record reference/text routing and return a fixed utterance score."""
+
     def _setup(self):
+        """Retain I/O and cache options to test configuration forwarding."""
         self.io = self.config.get("io")
         self.cache_dir = self.config.get("cache_dir")
 
     def get_metadata(self):
+        """Expose a dependency-free utterance metric for real scorer orchestration."""
         return MetricMetadata(
             "test_utterance",
             MetricCategory.INDEPENDENT,
@@ -39,12 +43,16 @@ class UtteranceMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Record reference presence and transcript metadata, returning a fixed score."""
         self.calls["utterance"].append((references is not None, metadata["text"]))
         return {"test_score": 0.5}
 
 
 class CorpusMetric(UtteranceMetric):
+    """Record corpus paths, configuration, and metadata without model inference."""
+
     def get_metadata(self):
+        """Declare a distributional metric to exercise corpus dispatch."""
         return MetricMetadata(
             "test_corpus",
             MetricCategory.DISTRIBUTIONAL,
@@ -58,12 +66,17 @@ class CorpusMetric(UtteranceMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Record the corpus invocation and return a fixed corpus score."""
         self.calls["corpus"].append((predictions, references, self.config, metadata))
         return {"corpus_score": 0.25}
 
 
 @pytest.fixture
 def scoring_case(tmp_path, monkeypatch):
+    """Build tiny WAV inputs, fake metrics, CLI arguments, and cleanup call tracking.
+
+    Patch environment variables through monkeypatch so cache changes are
+    restored after each test; all generated inputs live under tmp_path."""
     for key in (
         "VERSA_CACHE_DIR",
         "VERSA_HF_CACHE_DIR",
@@ -88,6 +101,7 @@ def scoring_case(tmp_path, monkeypatch):
     original_close = scorer_shared.ScoreProcessor.close
 
     def close(processor):
+        """Close the real processor and record whether its output handle was released."""
         original_close(processor)
         calls["closed"].append(
             processor.file_handle is None or processor.file_handle.closed
@@ -132,6 +146,7 @@ def scoring_case(tmp_path, monkeypatch):
 def test_entrypoint_outputs_inputs_and_resume(
     scoring_case, monkeypatch, mode, no_match
 ):
+    """Verify scoring modes preserve routing, chunk keys, outputs, resume, and cleanup."""
     root, argv, calls = scoring_case
     entrypoint = scorer_chunk if mode in ("chunk_cli", "chunks") else scorer
     if mode == "metric":
@@ -189,6 +204,7 @@ def test_entrypoint_outputs_inputs_and_resume(
 
 @pytest.mark.parametrize("entrypoint", [scorer, scorer_chunk])
 def test_explicit_corpus_config_wins(scoring_case, monkeypatch, entrypoint):
+    """Ensure explicit corpus I/O and cache settings override entrypoint defaults."""
     root, argv, calls = scoring_case
     (root / "config.yaml").write_text(
         yaml.safe_dump(
@@ -206,6 +222,7 @@ def test_explicit_corpus_config_wins(scoring_case, monkeypatch, entrypoint):
     "entrypoint,error", [(scorer, SystemExit), (scorer_chunk, SystemExit)]
 )
 def test_empty_config_contract(scoring_case, monkeypatch, entrypoint, error):
+    """Reject an empty score configuration with CLI exit status two."""
     root, argv, _ = scoring_case
     (root / "config.yaml").write_text("[]\n")
     monkeypatch.setattr(sys, "argv", argv)
@@ -215,6 +232,7 @@ def test_empty_config_contract(scoring_case, monkeypatch, entrypoint, error):
 
 
 def test_cuda_validation(scoring_case, monkeypatch):
+    """Reject GPU execution when CUDA is unavailable."""
     _, argv, _ = scoring_case
     monkeypatch.setattr(sys, "argv", argv + ["--use_gpu"])
     monkeypatch.setattr(scoring.torch.cuda, "is_available", lambda: False)
@@ -223,6 +241,7 @@ def test_cuda_validation(scoring_case, monkeypatch):
 
 
 def test_report_from_shared_scoring(scoring_case, monkeypatch):
+    """Verify the CLI writes a report containing scores from shared orchestration."""
     root, argv, _ = scoring_case
     report = root / "report.md"
     monkeypatch.setattr(sys, "argv", argv + ["--report", str(report)])
@@ -231,14 +250,17 @@ def test_report_from_shared_scoring(scoring_case, monkeypatch):
 
 
 def test_worker_count_reaches_scorer(scoring_case, monkeypatch):
+    """Verify the requested CPU worker count reaches utterance scoring."""
     _, argv, _ = scoring_case
     original = scoring.run_scoring
     workers = []
 
     def run(args, instance, *positional, **keywords):
+        """Wrap shared orchestration to observe the worker argument without spawning workers."""
         score_utterances = instance.score_utterances
 
         def score(*positional, **keywords):
+            """Record the requested worker count and score serially for this routing test."""
             workers.append(keywords.pop("num_workers"))
             return score_utterances(*positional, **keywords)
 
@@ -255,6 +277,7 @@ def test_worker_count_reaches_scorer(scoring_case, monkeypatch):
 def test_invalid_config_rejected_before_audio_loading(
     scoring_case, monkeypatch, entrypoint
 ):
+    """Reject unknown metrics before attempting to load missing audio files."""
     root, argv, calls = scoring_case
     (root / "config.yaml").write_text("- name: unknown_metric\n")
     (root / "pred/utt.wav").unlink()
@@ -267,6 +290,7 @@ def test_invalid_config_rejected_before_audio_loading(
 
 @pytest.mark.parametrize("entrypoint", [scorer, scorer_chunk])
 def test_literal_none_reference_without_text(scoring_case, monkeypatch, entrypoint):
+    """Interpret the literal None reference argument as absent in both entrypoints."""
     _, argv, calls = scoring_case
     argv[argv.index("--gt") + 1] = "None"
     text_index = argv.index("--text")

@@ -21,11 +21,13 @@ except ImportError:
 
 
 def _ensure_log_wmse_available():
+    """Raise ImportError with installation guidance if torch-log-wmse is absent."""
     if LogWMSE is None:
         raise ImportError("Please install torch-log-wmse and retry")
 
 
 def _as_unprocessed_tensor(audio):
+    """Convert audio to float tensors with batch/channel axes for 1D or 2D input."""
     if isinstance(audio, torch.Tensor):
         tensor = audio.float()
     else:
@@ -38,6 +40,7 @@ def _as_unprocessed_tensor(audio):
 
 
 def _as_stem_tensor(audio):
+    """Add a stem axis to a three-dimensional batch/channel/sample tensor."""
     tensor = _as_unprocessed_tensor(audio)
     if tensor.ndim == 3:
         tensor = tensor.unsqueeze(1)
@@ -81,6 +84,7 @@ class LogWmseMetric(BaseMetric):
     """Log-weighted mean square error."""
 
     def _setup(self):
+        """Construct LogWMSE with the configured audio duration, sample rate, and sign."""
         _ensure_log_wmse_available()
         self.audio_length = self.config.get("audio_length", 1.0)
         self.sample_rate = self.config.get("sample_rate", 44100)
@@ -97,6 +101,14 @@ class LogWmseMetric(BaseMetric):
         self.model = LogWMSE(**kwargs)
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ``log_wmse`` for processed predictions and clean references.
+
+        Use ``metadata["unprocessed"]`` or ``unproc_x`` for the original mixture,
+        falling back to predictions. Mono and channel/sample arrays are expanded
+        to batch/stem/channel/sample tensors. No resampling occurs here: the model
+        uses the configured sample_rate (default 44100), not the metadata rate.
+        The output retains backend scaling and the configured return_as_loss sign.
+        Missing predictions or references raise ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -114,10 +126,12 @@ class LogWmseMetric(BaseMetric):
         return log_wmse(unproc_x, proc_x, gt_x, fs, model=self.model)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _log_wmse_metadata()
 
 
 def _log_wmse_metadata():
+    """Return registry metadata describing log wmse inputs and dependencies."""
     return MetricMetadata(
         name="log_wmse",
         category=MetricCategory.DEPENDENT,

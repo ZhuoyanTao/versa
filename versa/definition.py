@@ -4,6 +4,7 @@
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 
+"""Metric interfaces, discovery metadata, factories, and suites."""
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ import logging
 
 
 class MetricCategory(Enum):
+    """Describe whether a metric needs paired, unpaired, or no reference audio."""
+
     INDEPENDENT = "independent"
     DEPENDENT = "dependent"
     NON_MATCH = "non_match"
@@ -19,6 +22,8 @@ class MetricCategory(Enum):
 
 
 class MetricType(Enum):
+    """Declare the kind of value exposed by a registered metric."""
+
     STRING = "string"
     FLOAT = "float"
     INT = "int"
@@ -32,6 +37,11 @@ class MetricType(Enum):
 
 @dataclass
 class MetricMetadata:
+    """Describe metric inputs, dependencies, capabilities, and provenance.
+
+    ``requires_multiple_sources`` means an ordered collection of source
+    waveforms is required, rather than a single waveform."""
+
     name: str
     category: MetricCategory
     metric_type: MetricType
@@ -50,6 +60,7 @@ class MetricRegistry:
     """Centralized registry for all metrics with automatic discovery."""
 
     def __init__(self):
+        """Create empty maps for metric classes, metadata, and aliases."""
         self._metrics: Dict[str, type] = {}
         self._metadata: Dict[str, MetricMetadata] = {}
         self._aliases: Dict[str, str] = {}
@@ -107,6 +118,10 @@ class BaseMetric(ABC):
     """Abstract base class for all metrics."""
 
     def __init__(self, config: Dict[str, Any] = None):
+        """Store configuration and immediately run the subclass setup hook.
+
+        Setup may load models or download assets; discovery should use metadata
+        instead of constructing metric instances."""
         self.config = config or {}
         self.logger = logging.getLogger(self.__class__.__name__)
         self._setup()
@@ -145,6 +160,7 @@ class GPUMetric(BaseMetric):
     """Base class for GPU-compatible metrics."""
 
     def __init__(self, config: Dict[str, Any] = None, device: str = "cuda"):
+        """Set the target device before running metric-specific initialization."""
         self.device = device
         super().__init__(config)
 
@@ -159,6 +175,7 @@ class MetricFactory:
     """Factory for creating metric instances with dependency management."""
 
     def __init__(self, registry: MetricRegistry):
+        """Bind a registry and initialize the cache of dependency import results."""
         self.registry = registry
         self._dependency_cache = {}
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -203,10 +220,12 @@ class MetricSuite:
     """Container for multiple metrics with batch processing capabilities."""
 
     def __init__(self, metrics: Dict[str, BaseMetric]):
+        """Retain the supplied name-to-instance mapping for suite evaluation."""
         self.metrics = metrics
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def __len__(self) -> int:
+        """Return the number of metric instances in this suite."""
         return len(self.metrics)
 
     def compute_all(

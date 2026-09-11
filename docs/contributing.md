@@ -80,6 +80,16 @@ strict dependency versions, prefer:
 
 ### Step 4: Add Docs and Examples
 
+Document each new or changed function, including private helpers, constructors,
+and test fixtures. A short behavioral summary is enough for a simple adapter;
+avoid docstrings that only repeat the function name. For metric `compute` methods,
+describe waveform dimensions and channel handling, sample-rate source and default,
+required references/text, output keys and units/direction, and failure behavior.
+For `_setup` and persistence helpers, describe downloads, cache changes, file
+ownership, and resume behavior. Keep existing docstrings accurate when behavior
+changes. See `MapssMetric.compute`, `StoiMetric.compute`, and
+`LogWmseMetric.compute` for concrete examples.
+
 Update `docs/supported_metrics.md` with the new metric. Mark the Auto-Install
 column according to whether the base installation provides all required
 dependencies.
@@ -123,3 +133,21 @@ dependencies installed, you can run:
 ```bash
 pre-commit run --all-files
 ```
+
+Run the documentation checks from the repository root (no model installation
+required):
+
+```bash
+python -m pip install -r ci/requirements-docstrings.txt
+interrogate --verbose --verbose --fail-under 80 versa
+docstr-coverage --include-setter --include-deleter --fail-under 80 versa
+python ci/check_function_docstrings.py --fail-under 80 versa
+```
+
+All three checks must pass at 80% or higher. Their output identifies missing
+definitions. The two package checks include modules, classes, constructors,
+private/nested functions, and bundled model code under `versa/`; the last check
+counts only actual function definitions. CodeRabbit separately checks functions
+touched by a PR, including files outside `versa/`. Package coverage does not
+replace that review. See [the coverage audit](docstring_coverage.md) for scope,
+baseline results, and checker differences.

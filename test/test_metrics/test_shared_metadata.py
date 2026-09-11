@@ -19,6 +19,7 @@ from versa import metric_metadata
 
 @pytest.mark.parametrize("family", ["qwen2_audio", "qwen_omni", "squim", "scoreq"])
 def test_runtime_registration_matches_source_discovery(family):
+    """Compare real registration with AST discovery using model-free placeholder classes."""
     path = (
         Path(__file__).resolve().parents[2]
         / "versa/utterance_metrics"
@@ -63,6 +64,7 @@ def test_runtime_registration_matches_source_discovery(family):
 
 
 def test_discovery_cli_does_not_import_model_stacks():
+    """Run discovery in a fresh process that rejects heavy model imports."""
     code = """
 import sys
 sys.argv = ["versa-score", "--list-metrics"]
@@ -90,6 +92,7 @@ main()
 @pytest.mark.parametrize("task", sorted(_RECOMMENDED_CONFIGS))
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
 def test_recommendation_values_and_header(task, device):
+    """Check YAML recommendation values and their task/device header against the source."""
     result = recommend_config(task, device)
     assert result.startswith(
         f"# Recommended VERSA score config for task={task}, device={device}\n"

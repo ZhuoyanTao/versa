@@ -41,6 +41,7 @@ from versa.huggingface_cache import (
 
 
 def _get_discrete_speech_cache_dir(config_cache_dir=None):
+    """Resolve the k-means cache from environment, explicit configuration, or default."""
     return (
         os.environ.get(DISCRETE_SPEECH_CACHE_ENV)
         or config_cache_dir
@@ -55,6 +56,7 @@ def _patch_transformers_loaders(cache_dir):
     from discrete_speech_metrics import speechtokendistance
 
     def patch_model(model_cls, repo_id):
+        """Wrap a model loader once per patch using its saved original implementation."""
         original = getattr(
             model_cls.from_pretrained,
             "_versa_original_from_pretrained",
@@ -62,6 +64,7 @@ def _patch_transformers_loaders(cache_dir):
         )
 
         def from_pretrained(pretrained_model_name_or_path, *args, **kwargs):
+            """Load weights with VERSA cache defaults and use local files when already cached."""
             kwargs.setdefault("cache_dir", str(cache_dir))
             kwargs.setdefault("use_safetensors", False)
             kwargs.update(
@@ -87,12 +90,14 @@ def _patch_transformers_loaders(cache_dir):
 
 
 def _patch_kmeans_loaders(kmeans_cache_dir):
+    """Redirect third-party k-means constructors to visible cached centroid files."""
     from discrete_speech_metrics import speechbleu
     from discrete_speech_metrics import speechtokendistance
 
     kmeans_dir = Path(kmeans_cache_dir).resolve() / "km"
 
     def patch_module(module):
+        """Replace a module k-means class while preserving its original constructor."""
         original_apply_kmeans = getattr(
             module.ApplyKmeans,
             "_versa_original_apply_kmeans",
@@ -100,7 +105,10 @@ def _patch_kmeans_loaders(kmeans_cache_dir):
         )
 
         class VisibleCacheApplyKmeans(original_apply_kmeans):
+            """Prefer VERSA centroid files over the backend path when the cached file exists."""
+
             def __init__(self, km_path, device):
+                """Resolve the centroid basename in the visible cache and initialize on device."""
                 visible_path = kmeans_dir / Path(km_path).name
                 super().__init__(
                     visible_path if visible_path.exists() else km_path, device
@@ -114,6 +122,9 @@ def _patch_kmeans_loaders(kmeans_cache_dir):
 
 
 def _load_discrete_speech_classes(cache_dir, kmeans_cache_dir):
+    """Import metric classes lazily and patch their Hugging Face and centroid caches.
+
+    Store imported classes globally; raise ImportError when the backend is absent."""
     global SpeechBERTScore, SpeechBLEU, SpeechTokenDistance
 
     if not DISCRETE_SPEECH_AVAILABLE:

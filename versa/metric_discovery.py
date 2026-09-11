@@ -250,6 +250,7 @@ def supported_recommendation_tasks() -> Iterable[str]:
 
 @contextlib.contextmanager
 def _quiet_metric_imports():
+    """Temporarily suppress logging and stderr during optional metric imports."""
     previous_disable_level = logging.root.manager.disable
     logging.disable(logging.CRITICAL)
     with contextlib.redirect_stderr(io.StringIO()):
@@ -260,6 +261,7 @@ def _quiet_metric_imports():
 
 
 def _format_table(headers: List[str], rows: List[List[str]]) -> str:
+    """Render headers and rows as a left-aligned table with computed column widths."""
     widths = [
         max(len(str(row[index])) for row in [headers] + rows)
         for index in range(len(headers))
@@ -280,6 +282,7 @@ def _format_table(headers: List[str], rows: List[List[str]]) -> str:
 
 
 def _add_source_discovered_metrics(registry: MetricRegistry) -> None:
+    """Register source-derived placeholders for metrics not already registered."""
     package_root = Path(__file__).resolve().parent
     for path in package_root.rglob("*.py"):
         if path.name.startswith("__"):
@@ -291,6 +294,10 @@ def _add_source_discovered_metrics(registry: MetricRegistry) -> None:
 
 
 def _discover_module_metadata(path: Path) -> List[Tuple[Any, List[str]]]:
+    """Extract metadata and aliases from Python source without importing it.
+
+    Recognize literal constructors, local metadata helpers, and supported
+    prompt families. Unparseable source yields an empty list."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (SyntaxError, UnicodeDecodeError):
@@ -340,6 +347,7 @@ def _discover_module_metadata(path: Path) -> List[Tuple[Any, List[str]]]:
 
 
 def _discover_prompt_metrics(path: Path, tree: ast.AST) -> List[Tuple[Any, List[str]]]:
+    """Expand Qwen prompt names into metadata and aliases using source ASTs."""
     prompt_names = _default_prompt_names(tree)
     if not prompt_names and path.name == "qwen_omni.py":
         prompt_names = _default_prompt_names(
@@ -359,6 +367,7 @@ def _discover_prompt_metrics(path: Path, tree: ast.AST) -> List[Tuple[Any, List[
 
 
 def _default_prompt_names(tree: ast.AST) -> List[str]:
+    """Read literal string keys from the source assignment to DEFAULT_PROMPTS."""
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
@@ -381,6 +390,7 @@ def _metadata_from_register_call(
     assigned_metadata: Dict[str, Any],
     function_metadata: Dict[str, Any],
 ) -> Optional[Any]:
+    """Resolve the metadata argument of a registry call from known source values."""
     if len(node.args) < 2:
         return None
     metadata_arg = node.args[1]
@@ -394,6 +404,7 @@ def _metadata_from_register_call(
 
 
 def _metadata_from_known_helper(node: ast.Call) -> Optional[Any]:
+    """Evaluate only the supported dependency-light metadata helpers."""
     if not isinstance(node.func, ast.Name):
         return None
     helpers = {"_squim_metadata": _squim_metadata, "_scoreq_metadata": _scoreq_metadata}
@@ -405,6 +416,7 @@ def _metadata_from_known_helper(node: ast.Call) -> Optional[Any]:
 
 
 def _metadata_from_call(node: ast.AST) -> Optional[Any]:
+    """Build metadata from literal constructor arguments, or return None."""
     from versa.definition import MetricMetadata
 
     if not isinstance(node, ast.Call) or not _is_name(node.func, "MetricMetadata"):
@@ -444,6 +456,7 @@ def _metadata_from_call(node: ast.AST) -> Optional[Any]:
 
 
 def _literal_metric_value(node: ast.AST) -> Any:
+    """Decode literal AST values and metric enums without executing source code."""
     from versa.definition import MetricCategory, MetricType
 
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
@@ -467,6 +480,7 @@ def _literal_metric_value(node: ast.AST) -> Any:
 
 
 def _aliases_from_register_call(node: ast.Call) -> List[str]:
+    """Extract positional or keyword aliases, returning an empty list if unknown."""
     alias_node = None
     if len(node.args) >= 3:
         alias_node = node.args[2]
@@ -479,10 +493,12 @@ def _aliases_from_register_call(node: ast.Call) -> List[str]:
 
 
 def _is_register_call(node: ast.AST) -> bool:
+    """Recognize an attribute access named ``register`` in the source AST."""
     return isinstance(node, ast.Attribute) and node.attr == "register"
 
 
 def _is_name(node: ast.AST, name: str) -> bool:
+    """Check whether an AST node is a simple reference to the specified name."""
     return isinstance(node, ast.Name) and node.id == name
 
 
@@ -491,6 +507,7 @@ class _DiscoveredMetric:
 
 
 def _suggest_metric_names(registry: MetricRegistry, metric_name: str) -> List[str]:
+    """Return up to five sorted names or aliases containing the query, ignoring case."""
     query = metric_name.lower()
     names = set(registry.list_metrics()) | set(registry.list_aliases())
     return sorted(name for name in names if query in name.lower())[:5]

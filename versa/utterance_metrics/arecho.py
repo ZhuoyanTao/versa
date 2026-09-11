@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""ARECHO speech-quality model loading and utterance scoring."""
 import numpy as np
 import torch
 import librosa
@@ -158,6 +159,7 @@ class ArechoMetric(BaseMetric):
     """ARECHO no-reference speech quality metric."""
 
     def _setup(self):
+        """Load the ARECHO model, using the configured ESPnet model-zoo cache and device."""
         self.model_tag = self.config.get("model_tag", "default")
         self.use_gpu = self.config.get("use_gpu", False)
         self.cache_dir = self.config.get("cache_dir", "versa_cache/espnet_model_zoo")
@@ -168,6 +170,12 @@ class ArechoMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ARECHO quality outputs for mono predictions using a silent reference.
+
+        The sample rate comes from metadata in Hz (default 16000); predictions
+        are resampled to 16 kHz without channel mixing. References are unused.
+        Return backend dimensions with ``arecho_`` prefixes, or ``arecho_score``
+        for scalar output, without clipping. Missing predictions raise ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         metadata = metadata or {}
@@ -176,10 +184,12 @@ class ArechoMetric(BaseMetric):
         return arecho_noref_metric(self.model, pred_x, fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _arecho_metadata()
 
 
 def _arecho_metadata():
+    """Return registry metadata describing arecho inputs and dependencies."""
     return MetricMetadata(
         name="arecho",
         category=MetricCategory.INDEPENDENT,

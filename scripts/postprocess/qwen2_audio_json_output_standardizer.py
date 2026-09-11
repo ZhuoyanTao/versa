@@ -50,12 +50,15 @@ class JsonOutputStandardizer:
     """
 
     def _translate_non_english(self, text):
+        """Translate known terms using this standardizer instance translation dictionary."""
         return translate_non_english(text, self.translation_dict)
 
     def _process_llm_output(self, metric_name, llm_output):
+        """Clean an LLM response using this instance schema and the shared output rules."""
         return process_llm_output(metric_name, llm_output, self.expected_formats)
 
     def _rules_based_standardize(self, metric_name, raw_output):
+        """Apply deterministic category and numeric rules using this instance schema."""
         return rules_based_standardize(
             metric_name, raw_output, self.expected_formats, self.translation_dict
         )
@@ -325,6 +328,7 @@ def process_directory(input_dir, output_dir=None, use_llm=True, file_pattern="*.
 
 
 def main():
+    """Parse CLI inputs, configure the standardizer, and write normalized output files."""
     parser = argparse.ArgumentParser(description="Standardize Qwen2-Audio JSON outputs")
     parser.add_argument("input", help="Input JSON file or directory")
     parser.add_argument(

@@ -284,6 +284,10 @@ def _maybe_chunk_filelists(
 
 
 def main():
+    """Validate CLI inputs, optionally materialize audio chunks, and run scoring.
+
+    Chunk mode uses the generated prediction directory for corpus metrics;
+    chunk files remain available after scoring."""
     parser = get_parser()
     args = parser.parse_args()
 

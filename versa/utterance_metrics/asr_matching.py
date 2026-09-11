@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Whisper-based transcription mismatch between paired audio recordings."""
 import logging
 from typing import Dict, Optional, Union, Any
 
@@ -57,6 +58,7 @@ class ASRMatchMetric(BaseMetric):
     """ASR-oriented Mismatch Error Rate (ASR-Match) metric using Whisper."""
 
     def _setup(self):
+        """Load Whisper and retain decoding, cleaning, device, and download-cache settings."""
         self.model_tag = self.config.get("model_tag", "default")
         self.beam_size = self.config.get("beam_size", 5)
         self.text_cleaner = self.config.get("text_cleaner", "whisper_basic")
@@ -73,6 +75,13 @@ class ASRMatchMetric(BaseMetric):
     def compute(
         self, predictions: Any, references: Any = None, metadata: Dict[str, Any] = None
     ) -> Dict[str, Union[float, str]]:
+        """Compare Whisper transcripts of required mono prediction/reference audio.
+
+        Use shared metadata sample_rate in Hz (default 16000) and optionally
+        cache_pred_text to skip prediction transcription. Resample to 16 kHz
+        without channel mixing. Return asr_match edit counts, error rate, and
+        transcripts; missing inputs raise ValueError and ASR failures raise RuntimeError.
+        """
         pred_x = predictions
         gt_x = references
         fs = 16000
@@ -88,6 +97,7 @@ class ASRMatchMetric(BaseMetric):
         return asr_match_metric(self.wer_utils, pred_x, gt_x, cache_pred_text, fs)
 
     def get_metadata(self) -> MetricMetadata:
+        """Return input requirements and provenance for this metric configuration."""
         return MetricMetadata(
             name="asr_match",
             category=MetricCategory.DEPENDENT,

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+"""Text-audio contrastive perceptual audio quality scoring."""
 from __future__ import annotations
 
 import warnings

@@ -4,6 +4,7 @@
 # Mainly adapted from ESPnet-SE (https://github.com/espnet/espnet.git)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Uni-VERSA speech evaluation with optional audio and text references."""
 import numpy as np
 import torch
 import soundfile
@@ -12,6 +13,7 @@ from versa.audio_utils import resample_audio
 
 
 def _ensure_torchaudio_legacy_backend_api():
+    """Supply the removed no-op backend setter needed by legacy ESPnet imports."""
     try:
         import torchaudio
     except ImportError:
@@ -312,6 +314,7 @@ class UniversaMetric(BaseMetric):
     """Uni-VERSA speech assessment metric."""
 
     def _setup(self):
+        """Retain reference mode and cache settings, deferring model loading to compute."""
         self.model_type = self.config.get(
             "model_type", self.config.get("model_tag", "auto")
         )
@@ -320,6 +323,17 @@ class UniversaMetric(BaseMetric):
         self.cache_dir = self.config.get("cache_dir")
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return Uni-VERSA quality estimates using the configured reference mode.
+
+        Predictions are a path or mono/sample-by-channel NumPy array. Audio is
+        downmixed and resampled to 16 kHz. Metadata supplies sample_rate (default
+        16000 Hz), reference_sample_rate (default the prediction rate), and text.
+        A string in references is interpreted as text, not an audio path.
+
+        Auto mode selects a model from available references; explicit modes raise
+        ValueError when required inputs are absent. Models are lazily loaded and
+        cached and may download assets. Return backend dimensions with universa_
+        prefixes and backend scaling, without clipping."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -373,10 +387,12 @@ class UniversaMetric(BaseMetric):
         return universa_metric(predictions, **metric_kwargs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _universa_metadata()
 
 
 def _universa_metadata():
+    """Return registry metadata describing universa inputs and dependencies."""
     return MetricMetadata(
         name="universa",
         category=MetricCategory.INDEPENDENT,

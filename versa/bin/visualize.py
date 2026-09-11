@@ -17,6 +17,7 @@ from versa.reporting import (
 
 
 def get_parser() -> argparse.ArgumentParser:
+    """Build CLI options for reading results and exporting summary reports."""
     parser = argparse.ArgumentParser(
         description="Create summary tables and visual reports from VERSA results.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -61,6 +62,7 @@ def get_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    """Read CLI result files and write the requested reports, creating parent folders."""
     parser = get_parser()
     args = parser.parse_args()
 
