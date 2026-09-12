@@ -67,7 +67,8 @@ import numpy as np
 
 from versa.audio_utils import resample_audio
 
-from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
+from versa.metric_metadata import _qwen2_audio_metadata, _qwen2_audio_aliases
+from versa.definition import BaseMetric
 
 try:
     from transformers import AutoProcessor, Qwen2AudioForConditionalGeneration
@@ -497,22 +498,6 @@ class Qwen2AudioMetric(BaseMetric):
         return f"qwen2_audio_{cls.metric_name}" if cls.metric_name else "qwen2_audio"
 
 
-def _qwen2_audio_metadata(name):
-    return MetricMetadata(
-        name=name,
-        category=MetricCategory.INDEPENDENT,
-        metric_type=MetricType.STRING,
-        requires_reference=False,
-        requires_text=False,
-        gpu_compatible=True,
-        auto_install=False,
-        dependencies=["transformers", "librosa", "numpy"],
-        description="Speech property extraction with Qwen2-Audio",
-        paper_reference="https://arxiv.org/abs/2407.10759",
-        implementation_source="https://github.com/QwenLM/Qwen2-Audio",
-    )
-
-
 def _make_qwen2_metric_class(metric_name):
     class _SpecificQwen2AudioMetric(Qwen2AudioMetric):
         pass
@@ -536,10 +521,7 @@ def register_qwen2_audio_metric(registry):
         registry.register(
             metric_class,
             _qwen2_audio_metadata(registry_name),
-            aliases=[
-                f"qwen2_{metric_name}_metric",
-                f"qwen_{metric_name}",
-            ],
+            aliases=_qwen2_audio_aliases(metric_name),
         )
 
 

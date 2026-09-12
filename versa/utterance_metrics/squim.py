@@ -19,7 +19,8 @@ except ImportError:
     SQUIM_OBJECTIVE = None
     SQUIM_SUBJECTIVE = None
 
-from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricType
+from versa.metric_metadata import _squim_metadata
+from versa.definition import BaseMetric
 
 SQUIM_AVAILABLE = SQUIM_OBJECTIVE is not None and SQUIM_SUBJECTIVE is not None
 
@@ -139,34 +140,6 @@ class SquimNoRefMetric(SquimMetric):
     def _setup(self):
         self.config = {**self.config, "mode": self.config.get("mode", "no_ref")}
         super()._setup()
-
-
-def _squim_metadata(name, mode):
-    requires_reference = mode == "ref"
-    description = (
-        "TorchAudio-SQUIM subjective MOS metric"
-        if requires_reference
-        else "TorchAudio-SQUIM reference-less PESQ, STOI, and SI-SDR metrics"
-    )
-    return MetricMetadata(
-        name=name,
-        category=(
-            MetricCategory.DEPENDENT
-            if requires_reference
-            else MetricCategory.INDEPENDENT
-        ),
-        metric_type=MetricType.DICT,
-        requires_reference=requires_reference,
-        requires_text=False,
-        gpu_compatible=False,
-        auto_install=False,
-        dependencies=["torch", "torchaudio"],
-        description=description,
-        paper_reference="https://arxiv.org/abs/2302.01147",
-        implementation_source=(
-            "https://pytorch.org/audio/main/tutorials/squim_tutorial.html"
-        ),
-    )
 
 
 def register_squim_metric(registry):
