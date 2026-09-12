@@ -125,7 +125,9 @@ def check_size(audio_ref, audio_test):
     """Repeat or truncate the nonempty reference to the test length, returning both.
 
     The test waveform is unchanged; print a message when durations differ.
-    An empty reference cannot be repeated and is unsupported."""
+    Raise ValueError for an empty reference, which cannot be repeated."""
+    if len(audio_ref) == 0:
+        raise ValueError("NORESQA requires non-empty reference audio")
     if len(audio_ref) > len(audio_test):
         print("Durations dont match. Adjusting duration of reference.")
         audio_ref = audio_ref[: len(audio_test)]

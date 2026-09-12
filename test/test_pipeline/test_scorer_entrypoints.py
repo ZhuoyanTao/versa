@@ -179,7 +179,7 @@ def test_entrypoint_outputs_inputs_and_resume(
     pred, gt, config, metadata = calls["corpus"][0]
     if mode == "chunks":
         assert pred == str(output) + ".chunks/pred"
-        assert gt is None
+        assert gt == (None if no_match else str(output) + ".chunks/gt")
     elif mode == "chunk_cli":
         assert pred == str(root / "pred")
         assert gt == (None if no_match else str(root / "gt"))
@@ -299,3 +299,38 @@ def test_literal_none_reference_without_text(scoring_case, monkeypatch, entrypoi
     entrypoint.main()
     assert calls["utterance"] == [(False, None)]
     assert calls["corpus"][0][1] is None
+
+
+@pytest.mark.parametrize("reference_keys", [[], ["different.wav"]])
+def test_chunking_rejects_missing_reference_keys(scoring_case, reference_keys):
+    """Validate pairing before any chunk files are created, including equal counts."""
+    root, argv, calls = scoring_case
+    args = scorer_chunk.get_parser().parse_args(argv[1:] + ["--enable_chunking"])
+    with pytest.raises(ValueError, match="Ground truth is missing.*utt.wav"):
+        scorer_chunk._maybe_chunk_filelists(
+            args,
+            {"utt.wav": str(root / "pred/utt.wav")},
+            dict.fromkeys(reference_keys, str(root / "gt/utt.wav")),
+            None,
+        )
+    assert not (root / "scores.jsonl.chunks").exists()
+    assert not calls["corpus"] and not calls["utterance"]
+
+
+def test_chunked_corpus_uses_directories_for_scp_inputs(scoring_case, monkeypatch):
+    """Route paired chunk directories to corpus metrics even when input uses SCP."""
+    root, argv, calls = scoring_case
+    for folder in ("pred", "gt"):
+        scp = root / f"{folder}.scp"
+        scp.write_text(f"utt.wav {root / folder / 'utt.wav'}\n")
+        argv[argv.index(f"--{folder}") + 1] = str(scp)
+    argv[argv.index("--io") + 1] = "soundfile"
+    monkeypatch.setattr(sys, "argv", argv + ["--enable_chunking"])
+    scorer_chunk.main()
+    pred, gt, config, _ = calls["corpus"][0]
+    assert config["io"] == "dir"
+    assert Path(pred).is_dir() and Path(gt).is_dir()
+    assert {p.name for p in Path(pred).glob("*.wav")} == {
+        p.name for p in Path(gt).glob("*.wav")
+    }
+    assert all(paired for paired, _ in calls["utterance"])

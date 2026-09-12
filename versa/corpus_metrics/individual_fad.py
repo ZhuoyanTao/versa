@@ -85,7 +85,8 @@ class IndividualFadMetric(BaseMetric):
         """Compare prediction and reference audio collections through cached embeddings.
 
         Inputs are keyed mappings or paths interpreted by the configured io mode.
-        Use references, then metadata baseline_files, then the configured baseline.
+        Use the first non-None source: references, metadata baseline_files, or the
+        configured baseline. Reject empty resolved collections.
         Sample rates and channel processing are delegated to FADTK audio loading.
         Cache embeddings in baseline/eval subdirectories under cache_dir.
 
@@ -98,7 +99,11 @@ class IndividualFadMetric(BaseMetric):
             raise ValueError("Individual FAD requires prediction audio files")
 
         metadata = metadata or {}
-        baseline = references or metadata.get("baseline_files") or self.baseline
+        baseline = references
+        if baseline is None:
+            baseline = metadata.get("baseline_files")
+        if baseline is None:
+            baseline = self.baseline
         if baseline is None:
             raise ValueError(
                 "Individual FAD requires reference or baseline audio files"
@@ -106,6 +111,10 @@ class IndividualFadMetric(BaseMetric):
 
         baseline_files = _load_audio_collection(baseline, self.io)
         eval_files = _load_audio_collection(predictions, self.io)
+        if not baseline_files or not eval_files:
+            raise ValueError(
+                "Individual FAD requires non-empty prediction and baseline collections"
+            )
 
         baseline_cache = Path(self.cache_dir) / "baseline"
         eval_cache = Path(self.cache_dir) / "eval"

@@ -70,7 +70,8 @@ class FadMetric(BaseMetric):
         """Compare prediction and reference audio collections through cached embeddings.
 
         Inputs are keyed mappings or paths interpreted by the configured io mode.
-        Use references, then metadata baseline_files, then the configured baseline.
+        Use the first non-None source: references, metadata baseline_files, or the
+        configured baseline. Reject empty resolved collections.
         Sample rates and channel processing are delegated to FADTK audio loading.
         Cache embeddings in baseline/eval subdirectories under cache_dir.
 
@@ -83,12 +84,20 @@ class FadMetric(BaseMetric):
             raise ValueError("FAD requires prediction audio files")
 
         metadata = metadata or {}
-        baseline = references or metadata.get("baseline_files") or self.baseline
+        baseline = references
+        if baseline is None:
+            baseline = metadata.get("baseline_files")
+        if baseline is None:
+            baseline = self.baseline
         if baseline is None:
             raise ValueError("FAD requires reference or baseline audio files")
 
         baseline_files = _load_audio_collection(baseline, self.io)
         eval_files = _load_audio_collection(predictions, self.io)
+        if not baseline_files or not eval_files:
+            raise ValueError(
+                "FAD requires non-empty prediction and baseline collections"
+            )
 
         logging.info("[FAD] caching baseline embeddings...")
         for key in tqdm(baseline_files.keys()):

@@ -4,11 +4,16 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   docstring-coverage:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
 
     - name: Set up Python
       uses: actions/setup-python@v7
@@ -33,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
 
     - name: Set up Python
       uses: actions/setup-python@v7
@@ -64,6 +71,8 @@ jobs:
     
     steps:
     - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
         
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v7
@@ -85,6 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
         
     - name: Set up Python
       uses: actions/setup-python@v7

@@ -224,10 +224,18 @@ def _maybe_chunk_filelists(
 ) -> tuple[dict, dict | None, dict | None, Path | None]:
     """
     If chunking is enabled, create on-disk chunked wavs and return updated mappings.
-    Also replicates text_info per chunk key.
+    Also replicates text_info per chunk key. Reject missing reference keys before
+    writing any chunks.
     """
     if not args.enable_chunking:
         return gen_files, gt_files, text_info, None
+
+    if gt_files is not None:
+        missing_gt = sorted(set(gen_files) - set(gt_files))
+        if missing_gt:
+            raise ValueError(
+                f"Ground truth is missing for generated keys: {missing_gt}"
+            )
 
     chunk_sec = float(args.chunk_duration)
     hop_sec = float(args.hop_duration) if args.hop_duration is not None else chunk_sec
@@ -251,7 +259,7 @@ def _maybe_chunk_filelists(
     text_chunks_all: dict | None = {} if text_info is not None else None
 
     for key, pred_path in gen_files.items():
-        gt_path = gt_files.get(key) if gt_files is not None else None
+        gt_path = gt_files[key] if gt_files is not None else None
         try:
             g_map, r_map = _chunk_pair_to_tmp(
                 key,
@@ -271,9 +279,6 @@ def _maybe_chunk_filelists(
         gen_chunks_all.update(g_map)
         if gt_chunks_all is not None and r_map is not None:
             gt_chunks_all.update(r_map)
-        elif gt_chunks_all is not None and r_map is None:
-            # keep structure consistent
-            gt_chunks_all = None
 
         # Duplicate text per chunk if provided
         if text_chunks_all is not None and text_info is not None and key in text_info:
@@ -326,7 +331,7 @@ def main():
     if args.enable_chunking and chunk_tmp_dir is not None:
         pred_for_corpus = str(chunk_tmp_dir / "pred")
         logging.info(f"Corpus scoring over chunk directory: {pred_for_corpus}")
-        gt_for_corpus = None
+        gt_for_corpus = str(chunk_tmp_dir / "gt") if gt_files is not None else None
 
     has_metrics, _ = run_scoring(
         args,
@@ -337,8 +342,8 @@ def main():
         text_info,
         corpus_inputs=(pred_for_corpus, gt_for_corpus),
         parser=parser,
-        corpus_defaults={"io": args.io},
-        corpus_use_gt=args.gt is not None,
+        corpus_defaults={"io": "dir" if args.enable_chunking else args.io},
+        corpus_use_gt=gt_for_corpus is not None,
     )
     assert has_metrics, "no scoring function is provided"
 

@@ -61,7 +61,7 @@ list of decoded model responses.
 
 import copy
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, List, Optional, Any
 
 import numpy as np
 import torch
@@ -136,7 +136,7 @@ def qwen_omni_base_metric(
     fs: int = 16000,
     custom_prompt: Optional[str] = None,
     max_length: int = 500,
-) -> str:
+) -> List[str]:
     """Calculate the base metric from Qwen2.5-Omni results.
 
     Args:
@@ -148,8 +148,7 @@ def qwen_omni_base_metric(
         max_length: Maximum length for model generation
 
     Returns:
-        List of decoded text responses from the processor. The legacy return
-        annotation says str, but batch_decode returns a list.
+        List of decoded text responses from the processor.
     """
     if custom_prompt is None:
         raise ValueError("Custom prompt must be provided for the qwen_omni model.")
@@ -205,7 +204,7 @@ def create_metric_fn(metric_name: str) -> callable:
         pred_x: np.ndarray,
         fs: int = 16000,
         custom_prompt: Optional[str] = None,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, List[str]]:
         """Calculate the specified metric from Qwen2.5-Omni results.
 
         Args:

@@ -101,7 +101,7 @@ class ASRMatchMetric(BaseMetric):
         return MetricMetadata(
             name="asr_match",
             category=MetricCategory.DEPENDENT,
-            metric_type=MetricType.FLOAT,
+            metric_type=MetricType.DICT,
             requires_reference=True,
             requires_text=False,
             gpu_compatible=True,
@@ -118,7 +118,7 @@ def register_asr_match_metric(registry):
     metric_metadata = MetricMetadata(
         name="asr_match",
         category=MetricCategory.DEPENDENT,
-        metric_type=MetricType.FLOAT,
+        metric_type=MetricType.DICT,
         requires_reference=True,
         requires_text=False,
         gpu_compatible=True,
