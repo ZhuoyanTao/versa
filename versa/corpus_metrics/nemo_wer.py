@@ -3,6 +3,7 @@
 # Copyright 2025 Haoran Wang
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""NeMo speech recognition and corpus transcription error rates."""
 import logging
 import os
 import tempfile
@@ -38,6 +39,7 @@ def nemo_wer_setup(
     use_gpu=True,
     cache_dir="versa_cache/nemo",
 ):
+    """Set NEMO_CACHE_DIR and load a NeMo transducer with a text cleaner on CPU/CUDA."""
     if model_tag == "default":
         model_tag = "nvidia/stt_en_conformer_transducer_xlarge"
     device = "cuda" if use_gpu else "cpu"
@@ -57,6 +59,7 @@ def nemo_wer_setup(
 
 
 def _extract_nemo_text(transcription):
+    """Extract text from a string, hypothesis object, or first nested transcription."""
     if isinstance(transcription, str):
         return transcription
     if hasattr(transcription, "text"):
@@ -149,6 +152,7 @@ class NemoWerMetric(BaseMetric):
     """NVIDIA NeMo ASR-based WER/CER edit counts."""
 
     def _setup(self):
+        """Load the configured NeMo recognizer and retain decoding/cache settings."""
         self.model_tag = self.config.get("model_tag", "default")
         self.text_cleaner = self.config.get("text_cleaner", "whisper_basic")
         self.use_gpu = self.config.get("use_gpu", True)
@@ -161,6 +165,16 @@ class NemoWerMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return NeMo word/character edit counts for a mono utterance.
+
+        Require predictions and reference text in metadata text or a string
+        references argument. Use metadata sample_rate in Hz (default 16000),
+        resampling to 16 kHz for ASR without channel mixing. Return
+        nemo_hyp_text, ref_text, and nemo_wer_*/nemo_cer_* counts
+        for delete, insert, replace, and equal; these are counts, not error rates.
+        Missing audio or text raises ValueError; inference failures propagate.
+        Reuse nemo_hyp_text from metadata or general_cache when available.
+        Uncached inference writes a temporary WAV and removes it in a finally block."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -186,10 +200,12 @@ class NemoWerMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _nemo_wer_metadata()
 
 
 def _nemo_wer_metadata():
+    """Return registry metadata describing nemo wer inputs and dependencies."""
     return MetricMetadata(
         name="nemo_wer",
         category=MetricCategory.NON_MATCH,

@@ -3,6 +3,7 @@
 # Adapted from speaker similarity code for singer identity
 # Uses SSL singer identity models from SonyCSLParis/ssl-singer-identity
 
+"""Singer identity model loading and paired embedding comparison."""
 import logging
 
 import numpy as np
@@ -183,6 +184,7 @@ class SingerMetric(BaseMetric):
     """Singer identity embedding cosine similarity."""
 
     def _setup(self):
+        """Load the selected singer encoder with its cache, device, and input-rate settings."""
         self.model_name = self.config.get("model_name", "byol")
         self.model_path = self.config.get("model_path")
         self.use_gpu = self.config.get("use_gpu", False)
@@ -200,6 +202,12 @@ class SingerMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ``singer_similarity`` cosine similarity for required mono audio pairs.
+
+        Read their common sample rate from metadata in Hz (default 16000), then
+        resample to target_sr (default 44100). No channel mixing or time alignment
+        is performed. Larger cosine similarity means closer embeddings; zero-norm
+        embeddings are not specially handled. Missing either input raises ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -215,10 +223,12 @@ class SingerMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _singer_metadata()
 
 
 def _singer_metadata():
+    """Return registry metadata describing singer inputs and dependencies."""
     return MetricMetadata(
         name="singer",
         category=MetricCategory.NON_MATCH,

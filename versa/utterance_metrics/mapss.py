@@ -18,6 +18,7 @@ except ImportError:
 
 
 def _require_mapss():
+    """Raise an actionable ImportError when the optional MAPSS backend is absent."""
     if mapss_compute is None:
         raise ImportError(
             "MAPSS is an optional dependency. Install the pinned backend with "
@@ -26,11 +27,13 @@ def _require_mapss():
 
 
 def _safe_path_component(value):
+    """Replace unsafe path characters and provide ``mixture`` for an empty result."""
     component = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value)).strip("._")
     return component or "mixture"
 
 
 def _result_directory_name(value):
+    """Append an eight-character key hash to a sanitized result directory name."""
     text = str(value)
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
     return f"{_safe_path_component(text)}-{digest}"
@@ -61,6 +64,10 @@ class MapssMetric(BaseMetric):
     """Manifold-based perceptual assessment for ordered separated sources."""
 
     def _setup(self):
+        """Validate backend availability and retain model and artifact settings.
+
+        The backend model is invoked during compute; results are saved under
+        ``cache_dir/results`` (default ``versa_cache/mapss/results``)."""
         _require_mapss()
         self.model = self.config.get("model", "wav2vec2")
         self.layer = self.config.get("layer")
@@ -75,6 +82,25 @@ class MapssMetric(BaseMetric):
         self.max_gpus = int(self.config.get("use_gpu", False))
 
     def compute(self, predictions, references=None, metadata=None):
+        """Score ordered separated sources and save MAPSS diagnostic artifacts.
+
+        Args:
+            predictions: List or tuple of at least two mono source waveforms.
+            references: Equally sized ordered reference list; source i must match
+                prediction i. This wrapper does not search for a permutation.
+            metadata: Optional ``sample_rate`` in Hz (default 16000) and mixture
+                ``key`` used to derive the artifact directory.
+
+        Returns:
+            Per-source ``mapss_ps_<source>`` and ``mapss_pm_<source>`` floats from
+            the backend summary, plus ``mapss_result_dir``. Values retain backend
+            scaling; this wrapper does not clip or normalize them.
+
+        Raises:
+            ValueError: Source collections are invalid or normalized names collide.
+
+        Backend model loading and result saving may download assets or write files.
+        Length handling and confidence intervals follow the configured MAPSS policy."""
         if not isinstance(predictions, (list, tuple)) or len(predictions) < 2:
             raise ValueError(
                 "MAPSS requires at least two ordered predicted source waveforms"
@@ -114,10 +140,12 @@ class MapssMetric(BaseMetric):
         return scores
 
     def get_metadata(self):
+        """Return the MAPSS input requirements and backend provenance."""
         return _mapss_metadata()
 
 
 def _mapss_metadata():
+    """Declare ordered-reference requirements and optional MAPSS dependencies."""
     return MetricMetadata(
         name="mapss",
         category=MetricCategory.DEPENDENT,
@@ -137,6 +165,7 @@ def _mapss_metadata():
 
 
 def register_mapss_metric(registry):
+    """Register the MAPSS wrapper and its public aliases in the supplied registry."""
     registry.register(
         MapssMetric,
         _mapss_metadata(),

@@ -4,6 +4,7 @@
 # Mainly adpated from ESPnet-SE (https://github.com/espnet/espnet.git)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Reference-based signal ratios with optional multi-source permutation alignment."""
 import ci_sdr
 import fast_bss_eval
 import numpy as np
@@ -21,13 +22,11 @@ def calculate_si_snr(
     pairwise=False,
     return_per_source=False,
 ):
-    """SI-SNR. ``pred_x`` is assumed already permutation-aligned to ``gt_x``.
+    """Return mean SI-SNR in dB for NumPy source/sample arrays.
 
-    Returns a float by default, unchanged from before. With
-    ``return_per_source`` it returns ``(mean, [per-source ...])``, which is
-    what multi-source inputs need -- the previous code called ``float()`` on
-    a multi-element tensor and raised.
-    """
+    Sources must already be aligned. Forward zero_mean, clamp_db, and pairwise
+    to fast_bss_eval. With return_per_source, return (mean, flattened scores);
+    pairwise mode flattens all pairwise scores rather than only aligned pairs."""
     # TODO(jiatong): pass zero_mean and clamp_db setup to the function
     pred_x = torch.from_numpy(pred_x).float()
     gt_x = torch.from_numpy(gt_x).float()
@@ -49,6 +48,10 @@ def calculate_si_snr(
 
 def calculate_ci_sdr(pred_x, gt_x, filter_length=512, return_per_source=False):
     # TODO(jiatong): pass filter_length to the function
+    """Return mean CI-SDR in dB for aligned NumPy source/sample arrays.
+
+    filter_length is in samples. Source permutation is disabled here. With
+    return_per_source, return (mean, per-source scores) instead of a scalar."""
     pred_x = torch.from_numpy(pred_x).float()
     gt_x = torch.from_numpy(gt_x).float()
 
@@ -61,22 +64,17 @@ def calculate_ci_sdr(pred_x, gt_x, filter_length=512, return_per_source=False):
 
 
 def signal_metric(pred_x, gt_x, compute_permutation=False):
-    """Reference-based SDR / SIR / SAR / SI-SNR / CI-SDR.
+    """Return mean SDR, SIR, SAR, SI-SNR, and CI-SDR in dB for paired sources.
 
-    Args:
-        pred_x: estimated sources, (channel, samples) or (samples,).
-        gt_x: reference sources, same shape. The number of sources must match
-            the estimate's; a ValueError says so otherwise, on both paths.
-        compute_permutation: resolve the optimal source-to-reference
-            assignment before scoring. Required for any system that emits
-            more than one source, where output order is arbitrary: without
-            it a separator that is correct but ordered differently from the
-            references scores as if it had failed.
-
-    With more than one source the per-source values are returned alongside
-    the mean, since a single number hides the case where one source is
-    recovered well and another not at all.
-    """
+    Accept mono (samples,) or (sources, samples) arrays with equal source counts.
+    Truncate unequal lengths to the shorter input; do not resample or mix channels.
+    With multiple sources, also return <metric>_src<i> values. If
+    compute_permutation is enabled, use fast_bss_eval to align estimates to
+    references and reuse that assignment for SI-SNR and CI-SDR; permutation[j]
+    is the estimate index assigned to reference j. Otherwise use the supplied
+    source order and mir_eval for SDR/SIR/SAR. Single-source output contains
+    only the five mean keys. Missing source-count agreement raises ValueError;
+    backend validation errors propagate and scores are not clipped."""
     # Expected input: (channel, samples)
     if pred_x.ndim == 1:
         pred_x = pred_x[np.newaxis, :]
@@ -156,9 +154,15 @@ class SignalMetric(BaseMetric):
     def _setup(self):
         # Off by default so single-source behaviour is byte-identical to
         # before; multi-source users opt in.
+        """Retain the opt-in source-permutation setting without loading a model."""
         self.compute_permutation = bool(self.config.get("compute_permutation", False))
 
     def compute(self, predictions, references=None, metadata=None):
+        """Score required mono or source/sample prediction and reference arrays.
+
+        Inputs must already share a sample rate; metadata is unused. Return the
+        means and optional per-source ratios/permutation described by signal_metric.
+        Missing either input raises ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -170,10 +174,12 @@ class SignalMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return signal-metric input requirements and implementation provenance."""
         return _signal_metadata()
 
 
 def _signal_metadata():
+    """Describe the reference-based signal ratios and optional source alignment."""
     return MetricMetadata(
         name="signal_metric",
         category=MetricCategory.DEPENDENT,

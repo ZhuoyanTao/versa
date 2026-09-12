@@ -9,6 +9,8 @@ The CI workflow is defined in `.github/workflows/ci.yml` and consists of several
 1. **Code Quality**: Checks code formatting with Black and linting with Flake8
 2. **Installation Tests**: Tests the lean package install across Python versions
 3. **Core Tests**: Runs dependency-light registry and scoring unit tests
+4. **Docstring Coverage**: Runs pinned Interrogate and docstr-coverage package
+   checks plus an AST-based function-only check, each with an 80% minimum
 
 Full metric tests are intentionally not part of the default CI path because many
 metrics require large models, Git dependencies, or external toolkits. Run those
@@ -46,6 +48,29 @@ pytest test/test_general.py
 pytest test/test_metrics/test_stoi.py
 pytest test/test_metrics/test_pesq.py
 ```
+
+### Docstring Coverage
+
+The independent `docstring-coverage` job installs only
+`ci/requirements-docstrings.txt`; it does not import VERSA or download models.
+Run the same checks locally:
+
+```bash
+python -m pip install -r ci/requirements-docstrings.txt
+interrogate --verbose --verbose --fail-under 80 versa
+docstr-coverage --include-setter --include-deleter --fail-under 80 versa
+python ci/check_function_docstrings.py --fail-under 80 versa
+```
+
+All files under `versa/`, including bundled model helpers, remain in scope.
+Private methods, constructors, nested and async functions count. There are no
+coverage exclusions or inherited-docstring exemptions. The AST check prints
+each missing function's path, line, and qualified name and compares the unrounded
+percentage to the threshold. Its parser/counting contracts run in core tests.
+
+CodeRabbit's PR check measures changed functions and can report a different
+percentage. It remains separate from these package-wide gates and from pytest
+execution coverage. See [the audit and checker survey](docstring_coverage.md).
 
 ### Real Model Cache Setup
 

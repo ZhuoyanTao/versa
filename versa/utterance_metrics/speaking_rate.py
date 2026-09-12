@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Whisper transcription and word or character rate estimation."""
 import logging
 
 import numpy as np
@@ -39,6 +40,10 @@ def speaking_rate_model_setup(
     use_gpu=True,
     cache_dir="versa_cache/whisper",
 ):
+    """Load Whisper and an ESPnet text cleaner, caching model weights under cache_dir.
+
+    Return model, cleaner, and beam_size entries. The default model tag is large;
+    missing Whisper or TextCleaner raises ImportError."""
     if model_tag == "default":
         model_tag = "large"
     device = "cuda" if use_gpu else "cpu"
@@ -96,6 +101,7 @@ class SpeakingRateMetric(BaseMetric):
     """Speaking word or character rate estimated from Whisper ASR output."""
 
     def _setup(self):
+        """Initialize Whisper and retain decoding, cache, and character-count settings."""
         self.model_tag = self.config.get("model_tag", "default")
         self.beam_size = self.config.get("beam_size", 5)
         self.text_cleaner = self.config.get("text_cleaner", "whisper_basic")
@@ -111,6 +117,13 @@ class SpeakingRateMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return speaking rate per second and ``whisper_hyp_text`` for mono audio.
+
+        Count words by default or characters with use_char. Read sample_rate
+        from metadata in Hz (default 16000); decode resampled 16 kHz audio unless
+        whisper_hyp_text is available in metadata or general_cache. References
+        are unused. Missing audio raises ValueError; empty audio is unsupported.
+        Speaking rate has no universal better direction."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -131,10 +144,12 @@ class SpeakingRateMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _speaking_rate_metadata()
 
 
 def _speaking_rate_metadata():
+    """Return registry metadata describing speaking rate inputs and dependencies."""
     return MetricMetadata(
         name="speaking_rate",
         category=MetricCategory.INDEPENDENT,

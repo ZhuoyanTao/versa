@@ -222,6 +222,11 @@ def _text_required_multi_source_metrics(score_config, registry):
 
 
 def main():
+    """Parse discovery or scoring options, validate inputs, and run the selected mode.
+
+    Scoring may initialize models and write or append results. Ordered
+    multi-source mode requires paired SCP lists and one utterance worker.
+    When requested, write a report from the resulting utterance records."""
     parser = get_parser()
     args = parser.parse_args()
 
@@ -408,6 +413,10 @@ def _write_report(
     outlier_limit,
     registry,
 ):
+    """Create the parent directory and overwrite a report from utterance records.
+
+    Infer HTML, CSV, or Markdown from the extension in auto mode; unknown
+    extensions default to HTML."""
     from pathlib import Path
 
     from versa.reporting import (

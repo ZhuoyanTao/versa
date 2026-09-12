@@ -171,6 +171,7 @@ class NoresqaMetric(BaseMetric):
         return model
 
     def _checkpoint_path(self, filename):
+        """Find a checkpoint in the configured or default cache, otherwise raise FileNotFoundError."""
         candidates = [
             os.path.join(self.cache_dir, filename),
             os.path.join(self.DEFAULT_CACHE_DIR, filename),

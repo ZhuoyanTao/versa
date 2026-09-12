@@ -125,6 +125,7 @@ class TestNomadMetric:
 
     @patch("versa.utterance_metrics.nomad.Nomad")
     def test_cache_dir_takes_precedence_over_legacy_model_cache(self, mock_nomad_class):
+        """Prefer the shared cache_dir over the legacy model_cache option."""
         mock_nomad_class.return_value = Mock()
 
         NomadMetric(

@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Speech-enhancement-based signal quality estimation."""
 import numpy as np
 
 try:
@@ -21,6 +22,10 @@ def se_snr_setup(
     use_gpu=False,
     cache_dir=None,
 ):
+    """Load an ESPnet enhancer from local files or a downloadable model tag.
+
+    When cache_dir is supplied, model-zoo downloads are stored there. Return
+    a SeparateSpeech instance on CPU or CUDA; missing ESPnet raises ImportError."""
     if SeparateSpeech is None:
         raise ImportError("se_snr requires espnet. Please install espnet and retry")
 
@@ -59,6 +64,9 @@ def se_snr_setup(
 
 
 def se_snr(model, pred_x, fs):
+    """Enhance mono audio at fs Hz, then return signal metrics with ``se_`` prefixes.
+
+    The enhanced signal acts as the reference. SIR is omitted from the result."""
     enhanced_x = model(pred_x[None, :], fs=fs)[0]
     signal_metrics = signal_metric(pred_x, enhanced_x)
     updated_metrics = {f"se_{key}": value for key, value in signal_metrics.items()}
@@ -70,6 +78,7 @@ class SeSnrMetric(BaseMetric):
     """Speech enhancement-based signal quality metrics."""
 
     def _setup(self):
+        """Load the configured enhancement model, downloading into its cache if needed."""
         self.model_tag = self.config.get("model_tag", "default")
         self.model_path = self.config.get("model_path")
         self.model_config = self.config.get("model_config")
@@ -84,6 +93,11 @@ class SeSnrMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Estimate signal quality using an enhanced version of mono predictions.
+
+        ``metadata["sample_rate"]`` is in Hz and defaults to 16000. References are
+        unused; missing predictions raise ValueError. Return ``se_sdr``, ``se_sar``,
+        ``se_si_snr``, and ``se_ci_sdr`` in dB, without clipping or channel mixing."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -91,10 +105,12 @@ class SeSnrMetric(BaseMetric):
         return se_snr(self.model, np.asarray(predictions), fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _se_snr_metadata()
 
 
 def _se_snr_metadata():
+    """Return registry metadata describing se snr inputs and dependencies."""
     return MetricMetadata(
         name="se_snr",
         category=MetricCategory.INDEPENDENT,

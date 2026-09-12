@@ -1,3 +1,5 @@
+"""MAPSS source ordering, optional dependency, and artifact contract tests."""
+
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,16 +11,23 @@ from versa.utterance_metrics import mapss
 
 
 class FakeSummary:
+    """Provide the indexed-table interface consumed by MAPSS summary conversion."""
+
     def __init__(self, rows):
+        """Retain source rows for conversion without requiring pandas."""
         self.rows = rows
 
     def to_dict(self, orient):
+        """Return source rows and assert the requested index orientation."""
         assert orient == "index"
         return self.rows
 
 
 class FakeResult:
+    """Supply fixed source summaries and record diagnostic-save requests."""
+
     def __init__(self):
+        """Create two source summaries with frame counts and an empty save record."""
         self.summary = FakeSummary(
             {
                 "Vocals": {"ps": 0.75, "pm": 0.8, "ps_frames": 10, "pm_frames": 9},
@@ -28,16 +37,19 @@ class FakeResult:
         self.saved = None
 
     def save(self, directory, plot):
+        """Record the requested artifact directory and plot flag without writing files."""
         self.saved = (directory, plot)
 
 
 def test_mapss_metric_forwards_ordered_sources_and_retains_frames(
     monkeypatch, tmp_path
 ):
+    """Verify source lists reach MAPSS unchanged and diagnostic artifacts are retained."""
     call = SimpleNamespace(kwargs=None)
     result = FakeResult()
 
     def fake_mapss(**kwargs):
+        """Record backend arguments and return the fixed diagnostic result."""
         call.kwargs = kwargs
         return result
 
@@ -90,6 +102,7 @@ def test_mapss_metric_forwards_ordered_sources_and_retains_frames(
 def test_mapss_metric_validates_source_pairs(
     monkeypatch, predictions, references, message
 ):
+    """Reject too few sources or mismatched prediction/reference source counts."""
     monkeypatch.setattr(mapss, "mapss_compute", lambda **kwargs: FakeResult())
     metric = mapss.MapssMetric()
 
@@ -98,6 +111,7 @@ def test_mapss_metric_validates_source_pairs(
 
 
 def test_mapss_setup_reports_missing_optional_dependency(monkeypatch):
+    """Expose installer guidance when MAPSS is unavailable."""
     monkeypatch.setattr(mapss, "mapss_compute", None)
 
     with pytest.raises(ImportError, match=r"tools/install_mapss\.sh"):
@@ -105,6 +119,7 @@ def test_mapss_setup_reports_missing_optional_dependency(monkeypatch):
 
 
 def test_mapss_registration_metadata():
+    """Verify aliases resolve to the optional multi-source metric and its requirements."""
     registry = MetricRegistry()
 
     mapss.register_mapss_metric(registry)
@@ -122,6 +137,7 @@ def test_mapss_registration_metadata():
 
 
 def test_mapss_is_discoverable_without_optional_backend():
+    """Expose MAPSS metadata through source discovery without loading its backend."""
     registry = create_metric_discovery_registry()
 
     metadata = registry.get_metadata("mapss")
@@ -133,6 +149,7 @@ def test_mapss_is_discoverable_without_optional_backend():
 
 
 def test_mapss_rejects_colliding_normalized_source_names():
+    """Reject distinct source labels that would produce identical result keys."""
     summary = FakeSummary(
         {
             "lead vocal": {"ps": 1, "pm": 1, "ps_frames": 1, "pm_frames": 1},

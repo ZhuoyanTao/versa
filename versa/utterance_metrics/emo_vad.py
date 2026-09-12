@@ -66,7 +66,7 @@ class RegressionHead(nn.Module):
     r"""Classification head."""
 
     def __init__(self, config):
-
+        """Construct the dropout and dense layers for emotion-dimension regression."""
         super().__init__()
 
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
@@ -74,7 +74,7 @@ class RegressionHead(nn.Module):
         self.out_proj = nn.Linear(config.hidden_size, config.num_labels)
 
     def forward(self, features, **kwargs):
-
+        """Project pooled features into emotion logits using dropout and tanh."""
         x = features
         x = self.dropout(x)
         x = self.dense(x)
@@ -91,7 +91,7 @@ if TRANSFORMERS_AVAILABLE:
         r"""Speech emotion classifier."""
 
         def __init__(self, config):
-
+            """Initialize the Wav2Vec2 encoder and emotion regression head from config."""
             super().__init__(config)
 
             self.config = config
@@ -104,7 +104,7 @@ if TRANSFORMERS_AVAILABLE:
             self,
             input_values,
         ):
-
+            """Return mean-pooled encoder embeddings and emotion logits for batched audio."""
             outputs = self.wav2vec2(input_values)
             hidden_states = outputs[0]
             hidden_states = torch.mean(hidden_states, dim=1)
@@ -119,6 +119,7 @@ else:
 
         @classmethod
         def from_pretrained(cls, *args, **kwargs):
+            """Raise installation guidance when the optional Transformers backend is absent."""
             raise ImportError(
                 "transformers is not properly installed. "
                 "Please install transformers and retry"

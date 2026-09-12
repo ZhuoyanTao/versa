@@ -1,3 +1,5 @@
+"""SongEval aesthetics inference with local or cached model assets."""
+
 import importlib.util
 import hashlib
 import logging
@@ -44,6 +46,7 @@ SONGEVAL_OUTPUTS = (
 
 
 def _require_songeval_dependencies():
+    """Raise ImportError listing unavailable SongEval inference dependencies."""
     missing = []
     if MuQ is None:
         missing.append("muq")
@@ -60,6 +63,7 @@ def _require_songeval_dependencies():
 
 
 def _required_songeval_files(songeval_dir):
+    """Return the code, configuration, and checkpoint paths required by SongEval."""
     return (
         songeval_dir / "model.py",
         songeval_dir / "config.yaml",
@@ -68,6 +72,10 @@ def _required_songeval_files(songeval_dir):
 
 
 def _resolve_songeval_dir(cache_dir, model_dir=None, offline=False):
+    """Locate complete SongEval assets, optionally cloning the pinned revision.
+
+    Only clone when the default cache checkout is absent and offline is false.
+    Never repair an existing incomplete checkout; report missing files instead."""
     songeval_dir = Path(model_dir) if model_dir else Path(cache_dir) / "SongEval"
     missing_files = [
         str(path)
@@ -256,6 +264,7 @@ class SongEvalMetric(BaseMetric):
     """SongEval song aesthetics predictor."""
 
     def _setup(self):
+        """Load SongEval and MuQ, honoring explicit asset paths and offline mode."""
         self.cache_dir = self.config.get("cache_dir", "versa_cache")
         self.use_gpu = self.config.get("use_gpu", False)
         self.model_dir = self.config.get("model_dir")
@@ -270,6 +279,15 @@ class SongEvalMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return five SongEval aesthetics scores for prediction audio.
+
+        Use ``metadata["sample_rate"]`` in Hz (default 24000). Accept mono or
+        2D audio with at most eight channels, average channels, and resample to
+        24 kHz. Return songeval_coherence, songeval_musicality, songeval_memorability,
+        songeval_clarity, and songeval_naturalness, rounded to four decimals without
+        clipping. References are unused. Invalid rates, empty/nonfinite audio, or
+        ambiguous shapes raise ValueError; malformed model output raises RuntimeError.
+        """
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -277,10 +295,12 @@ class SongEvalMetric(BaseMetric):
         return songeval_metric(self.model_dict, np.asarray(predictions), fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _songeval_metadata()
 
 
 def _songeval_metadata():
+    """Return registry metadata describing songeval inputs and dependencies."""
     return MetricMetadata(
         name="songeval",
         category=MetricCategory.INDEPENDENT,

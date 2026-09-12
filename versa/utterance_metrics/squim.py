@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""TorchAudio SQUIM objective and subjective speech quality models."""
 import logging
 
 import numpy as np
@@ -26,6 +27,7 @@ SQUIM_AVAILABLE = SQUIM_OBJECTIVE is not None and SQUIM_SUBJECTIVE is not None
 
 
 def is_squim_available():
+    """Return whether SQUIM and its required metric dependencies were imported."""
     return SQUIM_AVAILABLE
 
 
@@ -81,6 +83,7 @@ class SquimMetric(BaseMetric):
     """TorchAudio-SQUIM speech quality metric."""
 
     def _setup(self):
+        """Validate mode, set the global Torch Hub cache, and load a SQUIM model."""
         if not SQUIM_AVAILABLE:
             raise ImportError(
                 "SQUIM is not available. Please install pesq, pystoi, and torchaudio"
@@ -96,6 +99,13 @@ class SquimMetric(BaseMetric):
             self.model = SQUIM_OBJECTIVE.get_model()
 
     def compute(self, predictions, references=None, metadata=None):
+        """Predict SQUIM speech quality from mono waveform arrays.
+
+        Read sample_rate in Hz from metadata (default 16000), resample to 16 kHz,
+        and add a batch axis without mixing channels. Ref mode requires a second
+        waveform and returns torch_squim_mos; no_ref mode returns torch_squim_stoi,
+        torch_squim_pesq, and torch_squim_si_sdr. Missing required audio raises
+        ValueError. Estimates retain backend scaling without clipping."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if self.mode == "ref" and references is None:
@@ -123,6 +133,7 @@ class SquimMetric(BaseMetric):
         }
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _squim_metadata(f"squim_{self.mode}", self.mode)
 
 
@@ -130,6 +141,7 @@ class SquimRefMetric(SquimMetric):
     """Reference-based TorchAudio-SQUIM MOS metric."""
 
     def _setup(self):
+        """Default to subjective reference mode before loading the SQUIM model."""
         self.config = {**self.config, "mode": self.config.get("mode", "ref")}
         super()._setup()
 
@@ -138,6 +150,7 @@ class SquimNoRefMetric(SquimMetric):
     """Reference-less TorchAudio-SQUIM objective metrics."""
 
     def _setup(self):
+        """Default to objective reference-free mode before loading the SQUIM model."""
         self.config = {**self.config, "mode": self.config.get("mode", "no_ref")}
         super()._setup()
 

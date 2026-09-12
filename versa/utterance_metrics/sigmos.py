@@ -1,3 +1,5 @@
+"""SIG-MOS ONNX inference for speech quality dimensions."""
+
 import os
 import logging
 from enum import Enum
@@ -18,6 +20,8 @@ SIGMOS_MODEL_URL = (
 
 
 class Version(Enum):
+    """Identify the supported SIG-MOS checkpoint revisions."""
+
     V1 = "v1"  # 15.10.2023
 
 
@@ -29,6 +33,7 @@ class SigMOS:
     """
 
     def __init__(self, model_dir, model_version=Version.V1):
+        """Load the selected ONNX checkpoint and configure 48 kHz STFT preprocessing."""
         assert model_version in [v for v in Version]
 
         model_path_history = {
@@ -53,6 +58,7 @@ class SigMOS:
         self.session = ort.InferenceSession(model_path_history[model_version], options)
 
     def stft(self, signal):
+        """Pad mono audio and return time-major complex64 windowed real-FFT frames."""
         last_frame = len(signal) % self.frame_size
         if last_frame == 0:
             last_frame = self.frame_size
@@ -72,6 +78,7 @@ class SigMOS:
 
     @staticmethod
     def compressed_mag_complex(x: np.ndarray, compress_factor=0.3):
+        """Build batched compressed magnitude, real, and imaginary features for ONNX."""
         x = x.view(np.float32).reshape(x.shape + (2,)).swapaxes(-1, -2)
         x2 = np.maximum((x * x).sum(axis=-2, keepdims=True), 1e-12)
         if compress_factor == 1:
@@ -85,6 +92,11 @@ class SigMOS:
         return np.expand_dims(features, 0)
 
     def run(self, audio: np.ndarray, sr=None):
+        """Return six SIGMOS quality dimensions after optional resampling to 48 kHz.
+
+        Input is mono audio. sr is in Hz; None means audio is already at 48 kHz.
+        Output keys are SIGMOS_COL, SIGMOS_DISC, SIGMOS_LOUD, SIGMOS_REVERB,
+        SIGMOS_SIG, and SIGMOS_OVRL; backend values are returned without clipping."""
         if sr is not None and sr != self.sampling_rate:
             audio = librosa.resample(
                 audio,
@@ -112,7 +124,7 @@ class SigMOS:
 
 
 def sigmos_setup(model_dir=None):
-
+    """Create the model directory, download an absent ONNX checkpoint, and load SIG-MOS."""
     if model_dir is None:
         # Get the absolute path to the current file (this script)
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -163,19 +175,27 @@ class SigmosMetric(BaseMetric):
     """SIG-MOS metric using the ICASSP 2024 SIG Challenge ONNX model."""
 
     def _setup(self):
+        """Load SIG-MOS from model_dir or cache_dir, downloading an absent checkpoint."""
         model_dir = self.config.get("model_dir", self.config.get("cache_dir"))
         self.model = sigmos_setup(model_dir=model_dir)
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return the six quality dimensions documented by ``SigMOS.run`` for mono audio.
+
+        Read sample_rate in Hz from metadata (default 48000); the model resamples
+        to 48 kHz. References are unused and no channel mixing is performed.
+        Backend errors propagate; this wrapper does not add input validation."""
         metadata = metadata or {}
         sample_rate = metadata.get("sample_rate", 48000)
         return sigmos_calculate(self.model, predictions, sample_rate)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _sigmos_metadata()
 
 
 def _sigmos_metadata():
+    """Return registry metadata describing sigmos inputs and dependencies."""
     return MetricMetadata(
         name="sigmos",
         category=MetricCategory.INDEPENDENT,

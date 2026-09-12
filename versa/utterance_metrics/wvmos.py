@@ -2,6 +2,7 @@
 
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""WV-MOS model loading and reference-free waveform scoring."""
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricT
 
 
 def wvmos_setup(use_gpu=False):
+    """Load the optional WV-MOS pretrained model on CPU or CUDA via its backend."""
     try:
         from wvmos import get_wvmos
     except ImportError as e:
@@ -51,19 +53,27 @@ class WvmosMetric(BaseMetric):
     """WV-MOS metric using a fine-tuned wav2vec2 model."""
 
     def _setup(self):
+        """Load the WV-MOS model on the configured device."""
         self.use_gpu = self.config.get("use_gpu", False)
         self.model = wvmos_setup(use_gpu=self.use_gpu)
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return the backend mean MOS estimate under ``wvmos`` for mono audio.
+
+        Use ``metadata["sample_rate"]`` in Hz (default 16000) and resample to
+        16 kHz without channel mixing. References are unused. The wrapper does
+        not clip scores or add validation beyond the backend processing."""
         metadata = metadata or {}
         sample_rate = metadata.get("sample_rate", 16000)
         return wvmos_calculate(self.model, predictions, sample_rate)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _wvmos_metadata()
 
 
 def _wvmos_metadata():
+    """Return registry metadata describing wvmos inputs and dependencies."""
     return MetricMetadata(
         name="wvmos",
         category=MetricCategory.INDEPENDENT,

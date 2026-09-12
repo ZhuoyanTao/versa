@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Speaker embedding extraction and paired cosine-similarity scoring."""
 import logging
 
 import numpy as np
@@ -78,6 +79,10 @@ def speaker_model_setup(
     use_gpu=False,
     cache_dir=None,
 ):
+    """Load ESPnet speaker embeddings from local files or a pretrained tag.
+
+    Select CPU/CUDA and optionally download model-zoo assets into cache_dir.
+    Missing ESPnet or a required downloader raises ImportError."""
     if Speech2Embedding is None:
         raise ImportError("speaker requires espnet. Please install espnet and retry")
 
@@ -116,11 +121,13 @@ class HFSpeakerModel:
     """
 
     def __init__(self, model, feature_extractor, device):
+        """Bind the pretrained embedding model, feature extractor, and target device."""
         self.model = model
         self.feature_extractor = feature_extractor
         self.device = device
 
     def __call__(self, speech):
+        """Extract embeddings from 16 kHz speech under torch.no_grad on the target device."""
         inputs = self.feature_extractor(
             speech, sampling_rate=16000, return_tensors="pt"
         )
@@ -165,6 +172,10 @@ def hf_speaker_model_setup(
 
 def speaker_metric(model, pred_x, gt_x, fs):
     # NOTE(jiatong): only work for 16000 Hz
+    """Return ``spk_similarity`` cosine similarity after resampling mono pairs to 16 kHz.
+
+    fs is the shared input rate in Hz. Warn on upsampling; no channel mixing
+    or zero-norm protection is applied to the embeddings."""
     if fs < 16000:
         logger.warning(
             "Speaker similarity with sampling rates below 16 kHz may be unreliable "
@@ -194,6 +205,7 @@ class SpeakerMetric(BaseMetric):
     """
 
     def _setup(self):
+        """Resolve the ESPnet or Hugging Face backend and load its cached speaker model."""
         self.model_tag = self.config.get("model_tag", "default")
         self.model_path = self.config.get("model_path")
         self.model_config = self.config.get("model_config")
@@ -224,6 +236,12 @@ class SpeakerMetric(BaseMetric):
             )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ``spk_similarity`` for required mono prediction and reference audio.
+
+        Use their shared ``metadata["sample_rate"]`` in Hz (default 16000). Both
+        are resampled to 16 kHz; no channel mixing or time alignment is performed.
+        Higher cosine similarity indicates closer embeddings. Missing either input
+        raises ValueError; backend and numerical failures are not suppressed."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -235,10 +253,12 @@ class SpeakerMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _speaker_metadata()
 
 
 def _speaker_metadata():
+    """Return registry metadata describing speaker inputs and dependencies."""
     return MetricMetadata(
         name="speaker",
         category=MetricCategory.NON_MATCH,

@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+"""Bundled NORESQA waveform preparation and preference inference helpers."""
 import torch
 import argparse
 import librosa as librosa
@@ -55,7 +56,9 @@ def argument_parser():
 
 # function extraction stft
 def extract_stft(audio, sampling_rate=16000):
+    """Return 256-bin frequency/time/magnitude-phase features from mono audio.
 
+    Use a 512-sample Hann window with 256-sample overlap; sampling_rate is Hz."""
     fx, tx, stft_out = signal.stft(
         audio, sampling_rate, window="hann", nperseg=512, noverlap=256, nfft=512
     )
@@ -72,7 +75,10 @@ def extract_stft(audio, sampling_rate=16000):
 
 # noresqa and noresqa-mos prediction calls
 def model_prediction_noresqa(test_feat, nmr_feat, model):
+    """Return cleaner-speech probability and expected SDR-bin score for one pair.
 
+    Inputs have batch/frequency/time/feature axes. Permute for the model,
+    apply softmax, and average frame predictions without tracking gradients."""
     intervals_sdr = np.arange(0.5, 40, 1)
 
     with torch.no_grad():
@@ -91,7 +97,10 @@ def model_prediction_noresqa(test_feat, nmr_feat, model):
 
 
 def model_prediction_noresqa_mos(test_feat, nmr_feat, model):
+    """Return the first raw NORESQA-MOS model output as a NumPy value.
 
+    Pass the nonmatching reference before test features; no MOS inversion
+    or clipping is applied here."""
     with torch.no_grad():
         score = model(nmr_feat, test_feat).detach().cpu().numpy()[0]
 
@@ -100,7 +109,7 @@ def model_prediction_noresqa_mos(test_feat, nmr_feat, model):
 
 # reading audio clips
 def audio_loading(path, sampling_rate=16000):
-
+    """Read mono audio from a file and resample to sampling_rate Hz when needed."""
     audio, fs = librosa.load(path, sr=None)
     if len(audio.shape) > 1:
         audio = librosa.to_mono(audio)
@@ -113,7 +122,12 @@ def audio_loading(path, sampling_rate=16000):
 
 # function checking if the size of the inputs are same. If not, then the reference audio's size is adjusted
 def check_size(audio_ref, audio_test):
+    """Repeat or truncate the nonempty reference to the test length, returning both.
 
+    The test waveform is unchanged; print a message when durations differ.
+    Raise ValueError for an empty reference, which cannot be repeated."""
+    if len(audio_ref) == 0:
+        raise ValueError("NORESQA requires non-empty reference audio")
     if len(audio_ref) > len(audio_test):
         print("Durations dont match. Adjusting duration of reference.")
         audio_ref = audio_ref[: len(audio_test)]
@@ -129,7 +143,11 @@ def check_size(audio_ref, audio_test):
 
 # audio loading and feature extraction
 def feats_loading(test_path, ref_path=None, noresqa_or_noresqaMOS=0):
+    """Prepare paired waveform arrays despite the legacy path parameter names.
 
+    Match reference duration to test duration. Mode 0 returns reference/test
+    STFT features, mode 1 returns the adjusted waveforms, and other modes
+    return None. Input audio must already be sampled at 16 kHz."""
     if noresqa_or_noresqaMOS == 0 or noresqa_or_noresqaMOS == 1:
 
         # audio_ref = audio_loading(ref_path)

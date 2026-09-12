@@ -7,6 +7,7 @@
 
 # flake8: noqa: E501
 
+"""Configurable speech and singing MOS predictors with model caching."""
 import logging
 import librosa
 import numpy as np
@@ -35,6 +36,11 @@ def pseudo_mos_setup(
 ):
     # Supported predictor types: utmos, dnsmos, aecmos, plcmos
     # Predictor args: predictor specific args
+    """Return predictor and sample-rate maps for the requested MOS backends.
+
+    Load or download models into their configured caches and select CPU/CUDA.
+    Torch Hub backends change the global Hub cache. Unknown predictor names
+    raise NotImplementedError; unavailable optional packages raise errors."""
     predictor_dict = {}
     predictor_fs = {}
     if use_gpu:
@@ -137,6 +143,11 @@ def pseudo_mos_setup(
 
 
 def pseudo_mos_metric(pred, fs, predictor_dict, predictor_fs, use_gpu=False):
+    """Run selected MOS predictors on mono audio sampled at fs Hz.
+
+    Return backend-specific keys, including dns_overall/dns_p808 for DNSMOS.
+    Each backend applies its preprocessing and output scale; scores are not
+    clipped. UTMOSv2 predictions are averaged over five inference passes."""
     scores = {}
     for predictor in predictor_dict.keys():
         if predictor == "utmos":
@@ -243,6 +254,10 @@ def pseudo_mos_metric(pred, fs, predictor_dict, predictor_fs, use_gpu=False):
                 use_magnitude: bool = True,
                 n_mels: Optional[int] = None,
             ) -> np.ndarray:
+                """Return time-major spectral features, optionally mel, magnitude, or log10.
+
+                Reject logarithmic complex output; clip magnitudes before taking the log.
+                """
                 if use_log and not use_magnitude:
                     raise ValueError(
                         "Log is only available if the magnitude is to be computed."
@@ -284,6 +299,7 @@ class PseudoMosMetric(BaseMetric):
     """Pseudo-subjective MOS predictors."""
 
     def _setup(self):
+        """Initialize the configured predictor collection and its model caches."""
         self.predictor_types = self.config.get(
             "predictor_types", ["utmos", "dnsmos", "plcmos"]
         )
@@ -298,6 +314,11 @@ class PseudoMosMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return selected backend MOS estimates for mono prediction audio.
+
+        ``metadata["sample_rate"]`` supplies Hz (default 16000). References are
+        unused, and channel mixing is not performed. Keys and scaling follow
+        ``pseudo_mos_metric``; missing predictions raise ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -311,10 +332,12 @@ class PseudoMosMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _pseudo_mos_metadata()
 
 
 def _pseudo_mos_metadata():
+    """Return registry metadata describing pseudo mos inputs and dependencies."""
     return MetricMetadata(
         name="pseudo_mos",
         category=MetricCategory.INDEPENDENT,

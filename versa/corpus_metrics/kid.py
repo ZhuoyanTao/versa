@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Kernel inception distance between audio embedding collections."""
 import logging
 
 from tqdm import tqdm
@@ -22,12 +23,14 @@ except ImportError:
 
 
 def _load_audio_collection(audio, io):
+    """Use an existing keyed audio mapping or load one with the selected I/O mode."""
     if isinstance(audio, dict):
         return audio
     return audio_loader_setup(audio, io)
 
 
 def _kid_metadata():
+    """Return registry metadata describing kid inputs and dependencies."""
     return MetricMetadata(
         name="kid",
         category=MetricCategory.DISTRIBUTIONAL,
@@ -47,6 +50,7 @@ class KidMetric(BaseMetric):
     """Kernel distance metric over prediction and reference collections."""
 
     def _setup(self):
+        """Require FADTK, load the configured embedding model, and retain cache/I/O settings."""
         if get_model is None or FrechetAudioDistance is None:
             raise ModuleNotFoundError(
                 "FADTK is not installed. Please install it following `tools/install_fadtk.sh`"
@@ -64,11 +68,28 @@ class KidMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Compare prediction and reference audio collections through cached embeddings.
+
+        Inputs are keyed mappings or paths interpreted by the configured io mode.
+        Use the first non-None source: references, metadata baseline_files, or the
+        configured baseline. Reject empty resolved collections.
+        Sample rates and channel processing are delegated to FADTK audio loading.
+        Cache embeddings in baseline/eval subdirectories under cache_dir.
+
+        Require at least two files in each collection. Return backend KID
+        statistics with ``kid`` prepended to each key.
+        Distance values retain backend scaling without clipping. Missing prediction
+        or baseline inputs raise ValueError; backend loading/statistics errors propagate.
+        """
         if predictions is None:
             raise ValueError("KID requires prediction audio files")
 
         metadata = metadata or {}
-        baseline = references or metadata.get("baseline_files") or self.baseline
+        baseline = references
+        if baseline is None:
+            baseline = metadata.get("baseline_files")
+        if baseline is None:
+            baseline = self.baseline
         if baseline is None:
             raise ValueError("KID requires reference or baseline audio files")
 
@@ -99,6 +120,7 @@ class KidMetric(BaseMetric):
         }
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _kid_metadata()
 
 

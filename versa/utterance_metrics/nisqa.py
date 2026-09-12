@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def _nisqa_lib():
+    """Return the bundled NISQA namespace or raise with dependency installation guidance."""
     if not NISQA_LIB_AVAILABLE and NL.NISQA is None and NL.versa_eval_mos is None:
         raise ImportError(
             "NISQA dependencies are not available. Please run tools/setup_nisqa.sh "

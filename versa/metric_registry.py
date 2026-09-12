@@ -10,6 +10,8 @@ from versa.definition import MetricRegistry
 
 @dataclass(frozen=True)
 class MetricModuleSpec:
+    """Identify an optional module, its exported symbols, and installation guidance."""
+
     module_name: str
     symbols: tuple
     install_hint: Optional[str] = None
@@ -334,6 +336,7 @@ def register_metric_for_config(
 
 
 def _has_concrete_metric(registry: MetricRegistry, metric_name: str) -> bool:
+    """Check that a registered class exposes runtime scoring and metadata methods."""
     metric_class = registry.get_metric(metric_name)
     if metric_class is None:
         return False
@@ -341,6 +344,7 @@ def _has_concrete_metric(registry: MetricRegistry, metric_name: str) -> bool:
 
 
 def _metric_spec_score(metric_name: str, spec: MetricModuleSpec) -> int:
+    """Rank likely module or symbol name matches ahead of unrelated metric modules."""
     query = _normalize_metric_name(metric_name)
     module_tail = _normalize_metric_name(spec.module_name.rsplit(".", 1)[-1])
     symbol_tails = [
@@ -354,10 +358,12 @@ def _metric_spec_score(metric_name: str, spec: MetricModuleSpec) -> int:
 
 
 def _normalize_metric_name(value: str) -> str:
+    """Lowercase a metric identifier and remove non-alphanumeric characters."""
     return "".join(character for character in value.lower() if character.isalnum())
 
 
 def _strip_symbol_affixes(symbol: str) -> str:
+    """Remove registry-function affixes to recover a candidate metric identifier."""
     if symbol.startswith("register_"):
         symbol = symbol[len("register_") :]
     if symbol.endswith("_metric"):
@@ -368,6 +374,7 @@ def _strip_symbol_affixes(symbol: str) -> str:
 def _try_import_metric_module(
     spec: MetricModuleSpec, logger: Optional[logging.Logger] = None
 ) -> Optional[Any]:
+    """Import an optional metric module, logging failures and returning None."""
     log = logger or logging.getLogger(__name__)
     try:
         return importlib.import_module(spec.module_name)

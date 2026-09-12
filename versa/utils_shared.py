@@ -3,6 +3,7 @@
 # Copyright 2025 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Audio loading, waveform conversion, and serialization helpers for scoring."""
 import copy
 import fnmatch
 import logging
@@ -43,6 +44,7 @@ def find_files(
 
 
 def check_all_same(array):
+    """Return whether all samples equal the first; warn and return True if empty."""
     try:
         return np.all(array == array[0])
     except IndexError:
@@ -51,6 +53,10 @@ def check_all_same(array):
 
 
 def load_audio(info, io):
+    """Return ``(sample_rate, waveform)`` from a Kaldi pair or soundfile path.
+
+    The ``soundfile`` and ``dir`` modes preserve the file channel layout.
+    Unknown I/O modes raise NotImplementedError."""
     if io == "kaldi":
         gen_sr, gen_wav = info
     elif io == "soundfile" or io == "dir":
@@ -61,6 +67,10 @@ def load_audio(info, io):
 
 
 def wav_normalize(wave_array):
+    """Copy audio to contiguous float64, selecting the first channel if needed.
+
+    Input channels occupy the last axis. Only int16 input is amplitude-scaled,
+    by the maximum int16 value; other dtypes retain their original scale."""
     if wave_array.ndim > 1:
         wave_array = wave_array[:, 0]
         logging.warning(
@@ -78,6 +88,7 @@ def wav_normalize(wave_array):
 
 
 def check_minimum_length(length, key_info):
+    """Check duration in seconds against minimum lengths for the named metrics."""
     if "stoi" in key_info:
         # NOTE(jiatong): explicitly 0.256s as in https://github.com/mpariente/pystoi/pull/24
         if length < 0.3:

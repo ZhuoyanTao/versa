@@ -1,3 +1,5 @@
+"""Ordered multi-source CLI validation and result persistence contracts."""
+
 import json
 import sys
 from dataclasses import replace
@@ -22,16 +24,21 @@ from versa.scorer_shared import VersaScorer, find_files
 
 
 class OrderedSourceMetric(BaseMetric):
+    """Record ordered source calls while returning a deterministic source-count score."""
+
     calls = []
 
     def _setup(self):
+        """Avoid loading a model for the pipeline contract tests."""
         pass
 
     def compute(self, predictions, references=None, metadata=None):
+        """Record waveforms and metadata, then return the predicted source count."""
         self.calls.append((predictions, references, metadata))
         return {"ordered_source_score": float(len(predictions))}
 
     def get_metadata(self):
+        """Declare a dependency-free metric requiring multiple ordered reference sources."""
         return MetricMetadata(
             name="ordered_source",
             category=MetricCategory.DEPENDENT,
@@ -47,6 +54,7 @@ class OrderedSourceMetric(BaseMetric):
 
 
 def _source_mappings():
+    """Build two-source prediction/reference maps sharing two mixture keys and fixture audio."""
     sample_files = list(find_files("test/test_samples/test2").values())
     sample_file = sample_files[0]
     keys = ["mixture-a", "mixture-b"]
@@ -55,6 +63,7 @@ def _source_mappings():
 
 
 def test_multi_source_parser_accepts_ordered_scp_lists():
+    """Preserve the order of predicted and reference SCP arguments in CLI parsing."""
     args = get_parser().parse_args(
         [
             "--pred_sources",
@@ -71,6 +80,7 @@ def test_multi_source_parser_accepts_ordered_scp_lists():
 
 
 def test_multi_source_rejects_only_metrics_that_require_text():
+    """Identify text requirements without rejecting audio-only multi-source metrics."""
     metadata = OrderedSourceMetric().get_metadata()
     score_config = [{"name": "ordered_source"}]
     registry = MetricRegistry()
@@ -88,6 +98,7 @@ def test_multi_source_rejects_only_metrics_that_require_text():
 def test_multi_source_cli_rejects_text_metric_before_generic_validation(
     monkeypatch, tmp_path, capsys
 ):
+    """Reject unsupported text inputs before dependency checks or model setup."""
     registry = MetricRegistry()
     registry.register(
         OrderedSourceMetric,
@@ -100,6 +111,7 @@ def test_multi_source_cli_rejects_text_metric_before_generic_validation(
     )
 
     def unexpected_validation(*args, **kwargs):
+        """Fail if generic validation runs before the multi-source text guard."""
         pytest.fail("generic validation ran before multi-source text validation")
 
     monkeypatch.setattr(
@@ -134,6 +146,7 @@ def test_multi_source_cli_rejects_text_metric_before_generic_validation(
 
 
 def test_multi_source_pipeline_preserves_order_and_writes_jsonl(tmp_path):
+    """Verify paired-source metadata and JSONL output using the real scoring pipeline."""
     registry = MetricRegistry()
     metadata = OrderedSourceMetric().get_metadata()
     registry.register(OrderedSourceMetric, metadata)
@@ -167,6 +180,7 @@ def test_multi_source_pipeline_preserves_order_and_writes_jsonl(tmp_path):
 
 
 def test_multi_source_pipeline_rejects_key_mismatch():
+    """Reject source mappings that do not contain the same mixture keys."""
     registry = MetricRegistry()
     metadata = OrderedSourceMetric().get_metadata()
     registry.register(OrderedSourceMetric, metadata)

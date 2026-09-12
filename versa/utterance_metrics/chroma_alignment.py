@@ -4,6 +4,7 @@
 # Chroma-based distance estimation with dynamic programming alignment
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Chroma feature alignment for comparing musical audio."""
 import logging
 from typing import Dict, Any, Optional, Union, Tuple, List
 

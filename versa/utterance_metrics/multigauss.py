@@ -153,6 +153,7 @@ class MultiGaussMetric(BaseMetric):
     """Multivariate probabilistic speech quality assessment."""
 
     def _setup(self):
+        """Load the MultiGauss head and XLSR encoder, caching downloaded encoder weights."""
         self.model = multigauss_model_setup(
             model_tag=self.config.get("model_tag", "probabilistic"),
             cache_dir=self.config.get("cache_dir", "versa_cache"),
@@ -160,6 +161,14 @@ class MultiGaussMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return MultiGauss quality dimensions and optional covariance for mono audio.
+
+        The input rate is ``metadata["sample_rate"]`` in Hz (default 16000). Audio
+        is resampled to 16 kHz, flattened, and repeated or cropped to ten seconds.
+        Return ``multigauss_mos``, ``multigauss_noi``, ``multigauss_col``,
+        ``multigauss_dis``, and ``multigauss_loud`` without clipping; probabilistic
+        mode also returns ``multigauss_covariance`` in that order. References are
+        unused. Missing predictions raise ValueError; empty audio is unsupported."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -167,10 +176,12 @@ class MultiGaussMetric(BaseMetric):
         return multigauss_metric(self.model, np.asarray(predictions), fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _multigauss_metadata()
 
 
 def _multigauss_metadata():
+    """Return registry metadata describing multigauss inputs and dependencies."""
     return MetricMetadata(
         name="multigauss",
         category=MetricCategory.INDEPENDENT,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Psychoacoustic speech-enhancement metrics from the optional pysepm backend."""
 import logging
 
 import numpy as np
@@ -20,6 +21,7 @@ except ImportError:
 
 
 def is_pysepm_available():
+    """Return whether the optional pysepm package was imported successfully."""
     return pysepm is not None
 
 
@@ -175,6 +177,11 @@ def ncm(pred_x, gt_x, fs):
 
 
 def pysepm_metric(pred_x, gt_x, fs, frame_len=0.03, overlap=0.75):
+    """Return eleven ``pysepm_`` measurements for aligned mono prediction/reference audio.
+
+    fs is in Hz; frame_len is seconds and overlap is a fraction. Composite
+    and NCM scores use resampled 8 or 16 kHz audio; other metrics use fs.
+    Distances, ratios, and quality scores retain their distinct backend scales."""
     if pysepm is None:
         raise ImportError(
             "pysepm is not installed. Please use `tools/install_pysepm.sh` to install"
@@ -224,6 +231,7 @@ class PysepmMetric(BaseMetric):
     """Composite pysepm reference-based speech quality metrics."""
 
     def _setup(self):
+        """Require pysepm and retain frame duration and overlap settings."""
         if pysepm is None:
             raise ImportError(
                 "pysepm is not installed. "
@@ -233,6 +241,11 @@ class PysepmMetric(BaseMetric):
         self.overlap = self.config.get("overlap", 0.75)
 
     def compute(self, predictions, references=None, metadata=None):
+        """Compute the pysepm metric bundle for required aligned mono waveforms.
+
+        Use ``metadata["sample_rate"]`` in Hz (default 16000); no channel mixing
+        or length alignment is performed. Keys and preprocessing follow
+        ``pysepm_metric``. Missing either waveform raises ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -247,10 +260,12 @@ class PysepmMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _pysepm_metadata()
 
 
 def _pysepm_metadata():
+    """Return registry metadata describing pysepm inputs and dependencies."""
     return MetricMetadata(
         name="pysepm",
         category=MetricCategory.DEPENDENT,

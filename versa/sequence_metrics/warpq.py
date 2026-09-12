@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Dynamic-time-warping speech quality assessment with WARP-Q."""
 import logging
 
 import numpy as np
@@ -30,6 +31,9 @@ def warpq_setup(
     sigma=[[1, 0], [0, 3], [1, 3]],
     apply_vad=False,
 ):
+    """Construct WARP-Q with MFCC, DTW, and optional VAD settings, without MOS mapping.
+
+    fs/fmax are Hz and patch_size is seconds. Missing WARP-Q raises ImportError."""
     args = {
         "sr": fs,
         "n_mfcc": n_mfcc,
@@ -69,6 +73,7 @@ class WarpqMetric(BaseMetric):
     """WARP-Q dynamic time warping cost metric."""
 
     def _setup(self):
+        """Create a WARP-Q evaluator with configured sample rate and alignment settings."""
         self.fs = self.config.get("fs", 8000)
         self.n_mfcc = self.config.get("n_mfcc", 13)
         self.fmax = self.config.get("fmax", 4000)
@@ -85,6 +90,12 @@ class WarpqMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ``warpq`` DTW cost for a required mono prediction/reference pair.
+
+        Use shared metadata sample_rate in Hz (default 16000) and resample to
+        the configured WARP-Q rate (default 8000). No channel mixing is performed.
+        The raw cost is returned without MOS mapping; missing inputs raise ValueError.
+        """
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -99,10 +110,12 @@ class WarpqMetric(BaseMetric):
         )
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _warpq_metadata()
 
 
 def _warpq_metadata():
+    """Return registry metadata describing warpq inputs and dependencies."""
     return MetricMetadata(
         name="warpq",
         category=MetricCategory.DEPENDENT,

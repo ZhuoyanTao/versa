@@ -10,8 +10,13 @@ from versa.utterance_metrics.emo_similarity import Emo2vecMetric, is_emo2vec_ava
 
 
 def test_emotion_metric_warns_for_low_sample_rate(caplog):
+    """Warn on low-rate embedding comparison while preserving the similarity result."""
+
     class DummyModel:
+        """Return a fixed embedding to isolate the sample-rate warning."""
+
         def extract_feature(self, audio, fs=16000):
+            """Return a unit embedding without model inference or downloads."""
             return np.asarray([1.0, 0.0], dtype=np.float32)
 
     metric = object.__new__(Emo2vecMetric)

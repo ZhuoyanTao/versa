@@ -7,6 +7,7 @@ from versa.definition import MetricCategory, MetricMetadata, MetricType
 
 
 def _qwen2_audio_metadata(name):
+    """Describe a named Qwen2-Audio prompt metric without importing its model."""
     return MetricMetadata(
         name=name,
         category=MetricCategory.INDEPENDENT,
@@ -23,6 +24,7 @@ def _qwen2_audio_metadata(name):
 
 
 def _qwen2_audio_aliases(metric_name):
+    """Return the legacy Qwen aliases for an unprefixed prompt name."""
     return [
         f"qwen2_{metric_name}_metric",
         f"qwen_{metric_name}",
@@ -30,6 +32,7 @@ def _qwen2_audio_aliases(metric_name):
 
 
 def _qwen_omni_metadata(name):
+    """Describe a named Qwen2.5-Omni prompt metric without importing its model."""
     return MetricMetadata(
         name=name,
         category=MetricCategory.INDEPENDENT,
@@ -46,10 +49,12 @@ def _qwen_omni_metadata(name):
 
 
 def _qwen_omni_aliases(metric_name):
+    """Return the legacy Omni alias for an unprefixed prompt name."""
     return [f"qwen_omni_{metric_name}_metric"]
 
 
 def _squim_metadata(name, mode):
+    """Describe SQUIM input requirements; only ``ref`` mode requires a reference."""
     requires_reference = mode == "ref"
     description = (
         "TorchAudio-SQUIM subjective MOS metric"
@@ -78,6 +83,7 @@ def _squim_metadata(name, mode):
 
 
 def _scoreq_metadata(name, mode):
+    """Describe ScoreQ input requirements and dependencies for the selected mode."""
     requires_reference = mode == "ref"
     description = (
         "ScoreQ reference-based speech quality assessment"

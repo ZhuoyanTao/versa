@@ -21,6 +21,7 @@ from scripts.postprocess.check_llm_result_match import (
     ],
 )
 def test_standardizer_rules_without_models(monkeypatch, module_name, class_name):
+    """Verify shared normalization and historical fallbacks with LLM loading disabled."""
     module = importlib.import_module("scripts.postprocess." + module_name)
     monkeypatch.setattr(module, "AutoTokenizer", None)
     monkeypatch.setattr(module, "AutoModelForCausalLM", None)
@@ -72,6 +73,7 @@ def test_standardizer_rules_without_models(monkeypatch, module_name, class_name)
 
 
 def test_filter_retains_historical_subset():
+    """Keep overlapping-speech normalization out of the historical filter schema."""
     assert set(FILTER_FORMATS) == set(rules.EXPECTED_FORMATS) - {
         "qwen_overlapping_speech"
     }
@@ -85,6 +87,7 @@ def test_filter_retains_historical_subset():
     ],
 )
 def test_direct_script_import(script, tmp_path):
+    """Verify each standardizer CLI imports from outside the repository directory."""
     path = Path(__file__).resolve().parents[1] / "scripts/postprocess" / script
     result = subprocess.run(
         [sys.executable, str(path), "--help"],

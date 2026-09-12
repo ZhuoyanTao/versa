@@ -3,6 +3,7 @@
 # Copyright 2025 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""CLAP audio-text similarity over keyed audio collections."""
 import logging
 import os
 
@@ -29,6 +30,10 @@ def clap_score_setup(
     cache_embeddings=False,
     io="kaldi",
 ):
+    """Load the CLAP backend and retain audio I/O and embedding-cache settings.
+
+    The backend may download weights. Embedding caching is opt-in and is used
+    during scoring; a missing backend raises ModuleNotFoundError."""
     if CLAPScore is None:
         raise ModuleNotFoundError(
             "frechet_audio_distance is not installed. "
@@ -53,12 +58,16 @@ def clap_score_setup(
 
 
 def _load_audio_entry(audio_info):
+    """Read a Kaldi sample-rate/waveform tuple or soundfile path as ``(rate, audio)``."""
     if isinstance(audio_info, tuple):
         return load_audio(audio_info, "kaldi")
     return load_audio(audio_info, "soundfile")
 
 
 def _load_audio_list(audio_files, target_sample_rate):
+    """Load sorted keyed audio as float32 mono arrays at target_sample_rate Hz.
+
+    Select the first channel and scale int16 data through wav_normalize."""
     audio_data = []
     for key in sorted(audio_files):
         sample_rate, wav = _load_audio_entry(audio_files[key])
@@ -78,6 +87,13 @@ def clap_score_scoring(
     key_info="clap_score",
     batch_size=10,
 ):
+    """Return mean paired audio/text similarity under key_info.
+
+    Accept a keyed audio mapping or input path interpreted with clap_info io.
+    text_info must contain every audio key. Sort both modalities by key and
+    resample audio to the CLAP rate. When enabled, read/write fixed embedding
+    cache filenames; callers must use a fresh cache for different collections.
+    Missing text, empty embeddings, or mismatched shapes raise ValueError."""
     if text_info is None:
         raise ValueError("CLAP score requires text references via --text.")
 
@@ -142,6 +158,7 @@ class ClapScoreMetric(BaseMetric):
     """Corpus-level CLAP score for paired text/audio alignment."""
 
     def _setup(self):
+        """Load the selected CLAP model and retain batch, I/O, and embedding-cache options."""
         self.io = self.config.get("io", "kaldi")
         self.batch_size = self.config.get("batch_size", 10)
         self.clap_info = clap_score_setup(
@@ -156,6 +173,13 @@ class ClapScoreMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return a scalar mean CLAP score for a keyed collection or corpus input path.
+
+        Require ``metadata["text_info"]`` keyed like the audio. File rates or
+        Kaldi tuples supply sample rates; audio is reduced to its first channel
+        and resampled. References are unused. Embeddings may be cached on disk.
+        Return backend similarity without clipping; invalid alignment raises
+        ValueError as described by ``clap_score_scoring``."""
         metadata = metadata or {}
         text_info = metadata.get("text_info")
         if text_info is None:
@@ -170,10 +194,12 @@ class ClapScoreMetric(BaseMetric):
         return scores["clap_score"]
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _clap_score_metadata()
 
 
 def _clap_score_metadata():
+    """Return registry metadata describing clap score inputs and dependencies."""
     return MetricMetadata(
         name="clap_score",
         category=MetricCategory.DISTRIBUTIONAL,
@@ -190,6 +216,7 @@ def _clap_score_metadata():
 
 
 def register_clap_score_metric(registry):
+    """Register corpus CLAP similarity and its aliases in the supplied registry."""
     registry.register(
         ClapScoreMetric,
         _clap_score_metadata(),

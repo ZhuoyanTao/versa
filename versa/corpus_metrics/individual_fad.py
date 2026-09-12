@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Per-file Frechet audio distances against a reference collection."""
 import logging
 from pathlib import Path
 
@@ -30,12 +31,14 @@ except ImportError:
 
 
 def _load_audio_collection(audio, io):
+    """Use an existing keyed audio mapping or load one with the selected I/O mode."""
     if isinstance(audio, dict):
         return audio
     return audio_loader_setup(audio, io)
 
 
 def _individual_fad_metadata():
+    """Return registry metadata describing individual fad inputs and dependencies."""
     return MetricMetadata(
         name="individual_fad",
         category=MetricCategory.DISTRIBUTIONAL,
@@ -58,6 +61,7 @@ class IndividualFadMetric(BaseMetric):
     """Per-file Frechet Audio Distance against a reference collection."""
 
     def _setup(self):
+        """Require FADTK, load the configured embedding model, and retain cache/I/O settings."""
         if (
             get_model is None
             or FrechetAudioDistance is None
@@ -78,11 +82,28 @@ class IndividualFadMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Compare prediction and reference audio collections through cached embeddings.
+
+        Inputs are keyed mappings or paths interpreted by the configured io mode.
+        Use the first non-None source: references, metadata baseline_files, or the
+        configured baseline. Reject empty resolved collections.
+        Sample rates and channel processing are delegated to FADTK audio loading.
+        Cache embeddings in baseline/eval subdirectories under cache_dir.
+
+        Return ``individual_fad`` mapping each prediction key to its distance
+        from the pooled reference embedding distribution.
+        Distance values retain backend scaling without clipping. Missing prediction
+        or baseline inputs raise ValueError; backend loading/statistics errors propagate.
+        """
         if predictions is None:
             raise ValueError("Individual FAD requires prediction audio files")
 
         metadata = metadata or {}
-        baseline = references or metadata.get("baseline_files") or self.baseline
+        baseline = references
+        if baseline is None:
+            baseline = metadata.get("baseline_files")
+        if baseline is None:
+            baseline = self.baseline
         if baseline is None:
             raise ValueError(
                 "Individual FAD requires reference or baseline audio files"
@@ -90,6 +111,10 @@ class IndividualFadMetric(BaseMetric):
 
         baseline_files = _load_audio_collection(baseline, self.io)
         eval_files = _load_audio_collection(predictions, self.io)
+        if not baseline_files or not eval_files:
+            raise ValueError(
+                "Individual FAD requires non-empty prediction and baseline collections"
+            )
 
         baseline_cache = Path(self.cache_dir) / "baseline"
         eval_cache = Path(self.cache_dir) / "eval"
@@ -123,6 +148,7 @@ class IndividualFadMetric(BaseMetric):
         return {"individual_fad": scores}
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _individual_fad_metadata()
 
 

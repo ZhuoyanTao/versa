@@ -22,7 +22,10 @@ from versa.definition import BaseMetric, MetricMetadata, MetricCategory, MetricT
 
 
 class lossnet(nn.Module):
+    """Learn channel-weighted perceptual distances between paired waveforms."""
+
     def __init__(self, nconv=14, nchan=32, dp=0.1, dist_act="no"):
+        """Build strided convolution blocks, learned channel weights, and distance activation."""
         super(lossnet, self).__init__()
         self.nconv = nconv
         self.dist_act = dist_act
@@ -67,6 +70,10 @@ class lossnet(nn.Module):
             self.act = None
 
     def forward(self, xref, xper):
+        """Return one perceptual distance per batch item from paired batch/sample tensors.
+
+        Move inputs to the model device, accumulate weighted feature differences
+        across layers, and apply the configured final distance activation."""
         device = next(self.parameters()).device
         xref = xref.unsqueeze(1).to(device)
         xper = xper.unsqueeze(1).to(device)

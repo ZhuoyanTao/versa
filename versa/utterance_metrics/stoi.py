@@ -3,6 +3,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Standard and extended short-time objective intelligibility scoring."""
 import numpy as np
 
 try:
@@ -14,6 +15,7 @@ from versa.definition import BaseMetric, MetricCategory, MetricMetadata, MetricT
 
 
 def stoi_metric(pred_x, gt_x, fs):
+    """Return ``stoi`` for mono arrays at fs Hz, trimming both to the shorter length."""
     if pred_x.shape[0] != gt_x.shape[0]:
         min_length = min(pred_x.shape[0], gt_x.shape[0])
         pred_x = pred_x[:min_length]
@@ -23,6 +25,7 @@ def stoi_metric(pred_x, gt_x, fs):
 
 
 def estoi_metric(pred_x, gt_x, fs):
+    """Return ``estoi`` for mono arrays at fs Hz, trimming both to the shorter length."""
     if pred_x.shape[0] != gt_x.shape[0]:
         min_length = min(pred_x.shape[0], gt_x.shape[0])
         pred_x = pred_x[:min_length]
@@ -35,10 +38,18 @@ class StoiMetric(BaseMetric):
     """Short-Time Objective Intelligibility metric."""
 
     def _setup(self):
+        """Select standard or extended STOI and its corresponding result key."""
         self.extended = self.config.get("extended", False)
         self.output_key = "estoi" if self.extended else "stoi"
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return ``stoi`` or ``estoi`` intelligibility for a pair of mono waveforms.
+
+        Both arrays are required and truncated to their shared minimum length.
+        ``metadata["sample_rate"]`` supplies Hz, defaulting to 16000. No channel
+        mixing is performed. Larger scores indicate greater intelligibility;
+        the backend score is returned without clipping. Missing audio raises
+        ValueError; other input restrictions are enforced by pystoi."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
         if references is None:
@@ -53,6 +64,7 @@ class StoiMetric(BaseMetric):
         return stoi_metric(pred_x, gt_x, fs)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _stoi_metadata(self.output_key, self.extended)
 
 
@@ -60,11 +72,13 @@ class EstoiMetric(StoiMetric):
     """Extended Short-Time Objective Intelligibility metric."""
 
     def _setup(self):
+        """Default to extended STOI unless the configuration explicitly disables it."""
         self.extended = self.config.get("extended", True)
         self.output_key = "estoi" if self.extended else "stoi"
 
 
 def _stoi_metadata(name, extended):
+    """Return registry metadata describing stoi inputs and dependencies."""
     label = "ESTOI" if extended else "STOI"
     description = (
         "Extended Short-Time Objective Intelligibility"

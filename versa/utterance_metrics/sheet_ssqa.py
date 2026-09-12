@@ -5,6 +5,7 @@
 # Copyright 2024 Jiatong Shi
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
+"""Sheet SSQA model loading and MOS estimation."""
 import numpy as np
 import time
 import torch
@@ -21,6 +22,10 @@ def sheet_ssqa_setup(
     cache_dir="versa_cache",
     use_gpu=False,
 ):
+    """Load a Sheet model through Torch Hub and move it to the selected device.
+
+    Set the global Hub cache directory and retry network errors up to three
+    times. Supplying both local model files raises NotImplementedError."""
     if use_gpu:
         device = "cuda"
     else:
@@ -51,6 +56,7 @@ def sheet_ssqa_setup(
 
 def sheet_ssqa(model, pred_x, fs, use_gpu=False):
     # NOTE(jiatong): current model only work for 16000 Hz
+    """Resample mono audio from fs Hz to 16 kHz and return the model score as ``sheet_ssqa``."""
     if fs != 16000:
         pred_x = resample_audio(pred_x, fs, 16000)
     pred_x = torch.tensor(pred_x).float()
@@ -63,6 +69,7 @@ class SheetSsqaMetric(BaseMetric):
     """Sheet SSQA MOS prediction metric."""
 
     def _setup(self):
+        """Load the configured Sheet Hub model, downloading into cache_dir if needed."""
         self.model_tag = self.config.get("model_tag", "default")
         self.model_path = self.config.get("model_path")
         self.model_config = self.config.get("model_config")
@@ -77,6 +84,11 @@ class SheetSsqaMetric(BaseMetric):
         )
 
     def compute(self, predictions, references=None, metadata=None):
+        """Return the backend MOS estimate under ``sheet_ssqa`` for mono predictions.
+
+        The sample rate comes from metadata in Hz (default 16000); audio is
+        resampled to 16 kHz. References are unused and no channel mixing is done.
+        The backend value is not clipped; absent predictions raise ValueError."""
         if predictions is None:
             raise ValueError("Predicted signal must be provided")
 
@@ -84,10 +96,12 @@ class SheetSsqaMetric(BaseMetric):
         return sheet_ssqa(self.model, np.asarray(predictions), fs, use_gpu=self.use_gpu)
 
     def get_metadata(self):
+        """Return input requirements and provenance for this metric configuration."""
         return _sheet_ssqa_metadata()
 
 
 def _sheet_ssqa_metadata():
+    """Return registry metadata describing sheet ssqa inputs and dependencies."""
     return MetricMetadata(
         name="sheet_ssqa",
         category=MetricCategory.INDEPENDENT,

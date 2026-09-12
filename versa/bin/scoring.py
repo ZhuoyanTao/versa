@@ -16,6 +16,9 @@ from versa.scorer_shared import (
 
 def configure_runtime(args):
     # In case of using `local` backend, all GPU will be visible to all process.
+    """Configure logging and select a CUDA device by rank when GPU use is requested.
+
+    Raise RuntimeError when GPU execution is requested without a CUDA device."""
     if args.use_gpu:
         if not torch.cuda.is_available() or torch.cuda.device_count() == 0:
             raise RuntimeError("--use_gpu was set, but no CUDA device is available")
@@ -37,6 +40,11 @@ def configure_runtime(args):
 
 
 def load_inputs(args, *, check_reference_count=True):
+    """Load prediction, reference, and transcript mappings from CLI arguments.
+
+    Normalize the literal ground-truth value ``None`` on args and omit paired
+    references in no-match mode. Reject empty predictions and, when enabled,
+    a reference collection smaller than the prediction collection."""
     gen_files = audio_loader_setup(args.pred, args.io)
 
     # find reference file
